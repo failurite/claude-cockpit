@@ -1,0 +1,129 @@
+import { app, BrowserWindow, ipcMain } from 'electron'
+import { join, dirname } from 'path'
+import { fileURLToPath } from 'url'
+import { SessionManager } from './sessions.js'
+import { startIngestServer, type IngestServer } from './ingest.js'
+import { initStore } from './store.js'
+import { hookStatus, installHooks, uninstallHooks } from './hooks-install.js'
+import type { HookEvent } from '../shared/types.js'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+
+let mainWindow: BrowserWindow | null = null
+let manager: SessionManager
+let ingest: IngestServer
+
+/** Absolute path to the hook emitter script (dev: repo/hooks, prod: resources). */
+function emitScriptPath(): string {
+  // out/main/index.js -> ../../hooks/emit.mjs in dev; packaged apps should ship hooks/ alongside.
+  return join(__dirname, '..', '..', 'hooks', 'emit.mjs')
+}
+
+/** Map an incoming hook event to a status change on the right pane. */
+function handleHookEvent(e: HookEvent): void {
+  let paneId = e.cockpit_pane_id
+  if (!paneId && e.session_id) paneId = manager.paneIdForClaudeSession(e.session_id)
+  if (!paneId) return
+
+  if (e.session_id) manager.bindClaudeSession(paneId, e.session_id)
+
+  const name = e.hook_event_name
+  const tool = (e.tool_name as string) || 'a tool'
+  switch (name) {
+    case 'SessionStart':
+      return manager.setStatus(paneId, 'idle', 'session started')
+    case 'UserPromptSubmit':
+      return manager.setStatus(paneId, 'working', 'you sent a prompt')
+    case 'PreToolUse':
+      return manager.setStatus(paneId, 'working', `running ${tool}`)
+    case 'PostToolUse':
+      return manager.setStatus(paneId, 'working', `ran ${tool}`)
+    case 'SubagentStop':
+      return manager.setStatus(paneId, 'working', 'a sub-agent finished')
+    case 'Stop':
+      return manager.setStatus(paneId, 'idle', 'finished — ready')
+    case 'SessionEnd':
+      return manager.setStatus(paneId, 'idle', 'session ended')
+    case 'Notification': {
+      const kind = String(e.notification_type || e.matcher || '').toLowerCase()
+      if (kind.includes('permission')) return manager.setStatus(paneId, 'waiting', 'awaiting permission')
+      if (kind.includes('elicit')) return manager.setStatus(paneId, 'waiting', 'needs your input')
+      if (kind.includes('idle')) return manager.setStatus(paneId, 'idle', 'waiting for your input')
+      return manager.setStatus(paneId, 'waiting', kind || 'needs attention')
+    }
+    default:
+      return
+  }
+}
+
+function broadcastSessions(): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('sessions:changed', manager.list())
+  }
+}
+
+async function bootstrap(): Promise<void> {
+  initStore()
+  ingest = await startIngestServer(handleHookEvent)
+  manager = new SessionManager(ingest.port)
+
+  manager.on('data', (paneId: string, chunk: string) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('pty:data', paneId, chunk)
+    }
+  })
+  manager.on('sessions', broadcastSessions)
+
+  // ---- IPC ----
+  ipcMain.handle('sessions:list', () => manager.list())
+  ipcMain.handle('sessions:create', (_e, opts) => manager.create(opts))
+  ipcMain.handle('sessions:close', (_e, id: string) => manager.close(id))
+  ipcMain.handle('sessions:rename', (_e, id: string, name: string) => manager.rename(id, name))
+  ipcMain.handle('pty:attach', (_e, id: string) => manager.getBuffer(id))
+  ipcMain.on('pty:write', (_e, id: string, data: string) => manager.write(id, data))
+  ipcMain.on('pty:resize', (_e, id: string, cols: number, rows: number) =>
+    manager.resize(id, cols, rows)
+  )
+  ipcMain.handle('hooks:status', () => hookStatus(emitScriptPath()))
+  ipcMain.handle('hooks:install', () => installHooks(emitScriptPath()))
+  ipcMain.handle('hooks:uninstall', () => uninstallHooks(emitScriptPath()))
+}
+
+function createWindow(): void {
+  mainWindow = new BrowserWindow({
+    width: 1440,
+    height: 900,
+    backgroundColor: '#14161b',
+    titleBarStyle: 'hiddenInset',
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.mjs'),
+      sandbox: false,
+      contextIsolation: true
+    }
+  })
+
+  if (process.env.ELECTRON_RENDERER_URL) {
+    mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
+  } else {
+    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+  }
+}
+
+app.whenReady().then(async () => {
+  await bootstrap()
+  createWindow()
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+  })
+})
+
+app.on('window-all-closed', () => {
+  manager?.disposeAll()
+  ingest?.close()
+  if (process.platform !== 'darwin') app.quit()
+})
+
+app.on('before-quit', () => {
+  manager?.disposeAll()
+  ingest?.close()
+})

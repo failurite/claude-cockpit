@@ -18,7 +18,15 @@ export default function App(): JSX.Element {
     })
     const off = window.cockpit.onSessionsChanged(setSessions)
     window.cockpit.hooks.status().then(setHooks)
-    window.cockpit.appInfo().then(setAppInfo)
+    window.cockpit.appInfo().then((info) => {
+      setAppInfo(info)
+      if (info.hooksJustInstalled) {
+        setNotice(
+          'Installed status hooks into ~/.claude/settings.json (a backup was saved first) ' +
+            'so sessions show live status. You can remove them anytime — see docs/HOOKS.md.'
+        )
+      }
+    })
     return off
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

@@ -5,7 +5,7 @@ import { existsSync } from 'fs'
 import { spawn } from 'child_process'
 import { SessionManager } from './sessions.js'
 import { startIngestServer, type IngestServer } from './ingest.js'
-import { initStore } from './store.js'
+import { initStore, getFlag, setFlag } from './store.js'
 import { hookStatus, installHooks, uninstallHooks } from './hooks-install.js'
 import type { HookEvent } from '../shared/types.js'
 
@@ -17,6 +17,8 @@ const ICON_PNG = join(APP_ROOT, 'build', 'icon.png')
 let mainWindow: BrowserWindow | null = null
 let manager: SessionManager
 let ingest: IngestServer
+/** Set true only on the launch where we auto-installed hooks (for the one-time notice). */
+let hooksJustInstalled = false
 
 /** Absolute path to the hook emitter script (dev: repo/hooks, prod: resources). */
 function emitScriptPath(): string {
@@ -95,6 +97,21 @@ function broadcastSessions(): void {
 
 async function bootstrap(): Promise<void> {
   initStore()
+
+  // Auto-install status hooks once, ever. If the user later removes them, we
+  // won't reinstall (the flag stays set), so we never fight their choice.
+  if (!getFlag('hooksAutoInstallTried')) {
+    setFlag('hooksAutoInstallTried', true)
+    try {
+      if (!hookStatus(emitScriptPath()).installed) {
+        installHooks(emitScriptPath())
+        hooksJustInstalled = true
+      }
+    } catch {
+      /* settings.json unwritable — fall back to the manual banner */
+    }
+  }
+
   ingest = await startIngestServer(handleHookEvent)
   manager = new SessionManager(ingest.port)
 
@@ -127,10 +144,15 @@ async function bootstrap(): Promise<void> {
 }
 
 /** Info about the app's own repo + runtime. */
-function appInfo(): { repoRoot: string; devAvailable: boolean; isDev: boolean } {
+function appInfo(): {
+  repoRoot: string
+  devAvailable: boolean
+  isDev: boolean
+  hooksJustInstalled: boolean
+} {
   const devAvailable =
     existsSync(join(APP_ROOT, 'package.json')) && existsSync(join(APP_ROOT, 'src'))
-  return { repoRoot: APP_ROOT, devAvailable, isDev: !app.isPackaged }
+  return { repoRoot: APP_ROOT, devAvailable, isDev: !app.isPackaged, hooksJustInstalled }
 }
 
 /** The special "work on claude-cockpit itself" session, opened in the app's repo. */

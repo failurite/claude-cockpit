@@ -86,6 +86,8 @@ export interface AppInfo {
   devAvailable: boolean
   /** True when running the dev server (npm run dev) vs a packaged build. */
   isDev: boolean
+  /** True only on the launch where the app auto-installed status hooks (drives a one-time notice). */
+  hooksJustInstalled: boolean
 }
 
 export interface HookInstallState {

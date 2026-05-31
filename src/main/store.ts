@@ -20,9 +20,11 @@ export interface PersistedSession {
 interface Persisted {
   names: Record<string, string>
   sessions: PersistedSession[]
+  /** One-time flags, e.g. whether we've already auto-installed status hooks. */
+  flags: Record<string, boolean>
 }
 
-let cache: Persisted = { names: {}, sessions: [] }
+let cache: Persisted = { names: {}, sessions: [], flags: {} }
 let filePath = ''
 
 export function initStore(): void {
@@ -31,9 +33,9 @@ export function initStore(): void {
   filePath = join(dir, 'claude-cockpit.json')
   if (existsSync(filePath)) {
     try {
-      cache = { names: {}, sessions: [], ...JSON.parse(readFileSync(filePath, 'utf8')) }
+      cache = { names: {}, sessions: [], flags: {}, ...JSON.parse(readFileSync(filePath, 'utf8')) }
     } catch {
-      cache = { names: {}, sessions: [] }
+      cache = { names: {}, sessions: [], flags: {} }
     }
   }
 }
@@ -53,6 +55,15 @@ export function getSavedName(nameKey: string): string | undefined {
 
 export function saveName(nameKey: string, name: string): void {
   cache.names[nameKey] = name
+  flush()
+}
+
+export function getFlag(key: string): boolean {
+  return !!cache.flags[key]
+}
+
+export function setFlag(key: string, value: boolean): void {
+  cache.flags[key] = value
   flush()
 }
 

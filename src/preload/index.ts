@@ -36,8 +36,23 @@ const api: CockpitApi = {
     install: () => ipcRenderer.invoke('hooks:install'),
     uninstall: () => ipcRenderer.invoke('hooks:uninstall')
   },
+  pickFolder: () => ipcRenderer.invoke('dialog:pick-folder'),
+  workspaces: {
+    list: () => ipcRenderer.invoke('workspaces:list'),
+    save: (ws) => ipcRenderer.invoke('workspaces:save', ws),
+    remove: (id) => ipcRenderer.invoke('workspaces:remove', id)
+  },
   appInfo: () => ipcRenderer.invoke('app:info'),
-  relaunchApp: (opts) => ipcRenderer.invoke('app:relaunch', opts)
+  relaunchApp: (opts) => ipcRenderer.invoke('app:relaunch', opts),
+  tmux: {
+    available: () => ipcRenderer.invoke('tmux:available'),
+    list: () => ipcRenderer.invoke('tmux:list'),
+    kill: (name) => ipcRenderer.invoke('tmux:kill', name)
+  },
+  settings: {
+    get: () => ipcRenderer.invoke('settings:get'),
+    update: (patch) => ipcRenderer.invoke('settings:update', patch)
+  }
 }
 
 contextBridge.exposeInMainWorld('cockpit', api)

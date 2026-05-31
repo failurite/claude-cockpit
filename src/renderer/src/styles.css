@@ -72,12 +72,122 @@ body {
   border-color: var(--accent);
 }
 
+.head-actions {
+  display: flex;
+  gap: 6px;
+  -webkit-app-region: no-drag;
+}
+
+/* ---------- Workspace groups ---------- */
+.ws-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0 6px;
+}
+.ws-group + .ws-group {
+  margin-top: 2px;
+}
+.ws-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px 4px 6px;
+}
+.ws-chevron,
+.ws-chevron-spacer {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 10px;
+  cursor: pointer;
+  padding: 0;
+}
+.ws-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ws-name.muted {
+  font-weight: 600;
+}
+.ws-btn {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.ws-header:hover .ws-btn {
+  border-color: var(--border);
+  color: var(--text);
+}
+.ws-btn:hover {
+  border-color: var(--accent) !important;
+}
+.ws-menu-wrap {
+  position: relative;
+}
+.menu-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+.ws-menu {
+  position: absolute;
+  right: 0;
+  top: 22px;
+  z-index: 50;
+  min-width: 210px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.ws-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 12px;
+  padding: 7px 9px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.ws-menu button:hover {
+  background: var(--bg-panel);
+}
+.ws-menu button.danger {
+  color: #ff8080;
+}
+.ws-empty {
+  list-style: none;
+  font-size: 11px;
+  color: var(--muted);
+  padding: 2px 12px 6px 24px;
+}
+
 .session-list {
   list-style: none;
   margin: 0;
-  padding: 6px;
-  overflow-y: auto;
-  flex: 1;
+  padding: 2px 6px 4px;
 }
 .session-item {
   display: flex;
@@ -364,4 +474,235 @@ body {
 }
 .statusbar .spacer {
   flex: 1;
+}
+
+/* ---------- Modals (workspace / session / settings) ---------- */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal {
+  width: 440px;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100vh - 60px);
+  overflow-y: auto;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px 18px 16px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+}
+.modal-title {
+  margin: 0 0 14px;
+  font-size: 16px;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.field > span {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.muted-label {
+  font-weight: 500 !important;
+}
+.field-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.text-input {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 7px 9px;
+  font-size: 13px;
+}
+.text-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.text-input.mono {
+  font-family: Menlo, monospace;
+  font-size: 12px;
+}
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  padding: 3px 0;
+}
+.check code,
+.field code {
+  font-family: Menlo, monospace;
+  font-size: 11px;
+  color: var(--waiting);
+}
+.cmd-preview {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--ok);
+  word-break: break-all;
+  margin-bottom: 14px;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.btn {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 13px;
+  padding: 7px 13px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.btn:hover {
+  border-color: var(--accent);
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #08111f;
+  font-weight: 600;
+}
+.settings-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.settings-note.mono {
+  font-family: Menlo, monospace;
+  font-size: 11px;
+  word-break: break-all;
+}
+.ok-tag {
+  flex: 1;
+  font-size: 13px;
+  color: var(--ok);
+}
+
+/* ---------- Error boundary / crash panel ---------- */
+.crash {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  padding: 24px;
+  z-index: 9999;
+}
+.crash-card {
+  max-width: 680px;
+  width: 100%;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px 22px;
+}
+.crash-card h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+.crash-msg {
+  color: #ff8f8f;
+  font-family: Menlo, monospace;
+  font-size: 13px;
+  margin: 0 0 12px;
+}
+.crash-stack {
+  max-height: 240px;
+  overflow: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: pre-wrap;
+}
+.crash-actions {
+  display: flex;
+  gap: 10px;
+  margin: 14px 0 8px;
+}
+.crash-actions button {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  cursor: pointer;
+}
+.crash-actions button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #08111f;
+  font-weight: 600;
+}
+.crash-hint {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 0;
+}
+
+/* ---------- Settings: tmux section ---------- */
+.settings-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text);
+  margin: 8px 0;
+  cursor: pointer;
+}
+.tmux-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tmux-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+.btn.danger {
+  border-color: #6b3f3f;
+  color: #ff8f8f;
+}
+.btn.danger:hover {
+  background: #3a2424;
 }

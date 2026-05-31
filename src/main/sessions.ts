@@ -2,7 +2,8 @@ import { EventEmitter } from 'events'
 import { homedir } from 'os'
 import pty from '@homebridge/node-pty-prebuilt-multiarch'
 import type { IPty } from '@homebridge/node-pty-prebuilt-multiarch'
-import type { SessionStatus, TerminalSession } from '../shared/types.js'
+import type { SessionOptions, SessionStatus, TerminalSession } from '../shared/types.js'
+import { DEFAULT_SESSION_OPTIONS } from '../shared/types.js'
 import {
   getSavedName,
   saveName,
@@ -11,6 +12,7 @@ import {
   type PersistedSession
 } from './store.js'
 import { watchTranscriptForSession } from './transcripts.js'
+import { isTmuxAvailable, devLaunchCommand, DEV_TMUX_NAME } from './tmux.js'
 
 /** Cap on retained pty output for replay when a terminal view (re)mounts. */
 const MAX_BUFFER = 200_000
@@ -25,6 +27,16 @@ interface Pane {
 }
 
 let seq = 0
+
+/** Map session options to `claude` CLI flags (order is stable for readability). */
+function claudeFlags(options: SessionOptions): string[] {
+  const flags: string[] = []
+  if (options.dangerouslySkipPermissions) flags.push('--dangerously-skip-permissions')
+  if (options.chrome) flags.push('--chrome')
+  const extra = options.extraArgs.trim()
+  if (extra) flags.push(extra)
+  return flags
+}
 
 /**
  * Owns every pty + the derived TerminalSession state. Emits:
@@ -55,7 +67,9 @@ export class SessionManager extends EventEmitter {
       cwd: p.session.cwd,
       command: p.session.command,
       kind: p.session.kind,
-      claudeSessionId: p.session.claudeSessionId
+      claudeSessionId: p.session.claudeSessionId,
+      workspaceId: p.session.workspaceId,
+      options: p.session.options
     }))
     saveSessions(sessions)
   }
@@ -68,6 +82,8 @@ export class SessionManager extends EventEmitter {
         command: s.command,
         name: s.name,
         kind: s.kind,
+        workspaceId: s.workspaceId,
+        options: s.options,
         resumeId: s.claudeSessionId
       })
     }
@@ -78,19 +94,41 @@ export class SessionManager extends EventEmitter {
     command?: string
     name?: string
     kind?: 'normal' | 'dev'
-    /** If set (and command is claude), launch `claude --resume <id>` to restore a conversation. */
+    workspaceId?: string | null
+    options?: Partial<SessionOptions>
+    /** If set (and command is claude), launch `claude … --resume <id>` to restore a conversation. */
     resumeId?: string | null
   }): TerminalSession {
-    const id = `pane-${++seq}-${Date.now().toString(36)}`
     const cwd = opts?.cwd || homedir()
     const command = opts?.command || 'claude'
     const kind = opts?.kind || 'normal'
+    const options: SessionOptions = { ...DEFAULT_SESSION_OPTIONS, ...opts?.options }
+    const workspaceId = opts?.workspaceId ?? null
+
+    // The dev session is special: when tmux is available it runs inside a
+    // persistent tmux server (survives app restarts) under a stable pane id, so
+    // its frozen hook env keeps matching after we re-attach.
+    const tmuxDev = kind === 'dev' && isTmuxAvailable()
+    if (tmuxDev) {
+      const existing = this.panes.get(DEV_TMUX_NAME)
+      if (existing) return existing.session
+    }
+    const id = tmuxDev ? DEV_TMUX_NAME : `pane-${++seq}-${Date.now().toString(36)}`
     const nameKey = `${cwd}::${command}`
     const name = opts?.name || getSavedName(nameKey) || `Session ${seq}`
 
-    // Resume a prior Claude conversation when we have its id.
-    const launch =
-      opts?.resumeId && command === 'claude' ? `claude --resume ${opts.resumeId}` : command
+    let launch: string
+    if (tmuxDev) {
+      // attach-or-create the persistent dev session; tmux keeps claude alive.
+      launch = devLaunchCommand(cwd)
+    } else {
+      // Build `claude <flags> [--resume <id>]`. Non-claude commands launch verbatim.
+      const parts =
+        command === 'claude'
+          ? ['claude', ...claudeFlags(options), ...(opts?.resumeId ? ['--resume', opts.resumeId] : [])]
+          : [command]
+      launch = parts.join(' ')
+    }
 
     const shell = process.env.SHELL || '/bin/zsh'
     // Login shell so GUI-launched apps still get the user's PATH, then exec the
@@ -116,6 +154,9 @@ export class SessionManager extends EventEmitter {
       cwd,
       command,
       kind,
+      workspaceId,
+      options,
+      tmuxSession: tmuxDev ? DEV_TMUX_NAME : null,
       claudeSessionId: null,
       status: 'starting',
       subagentCount: 0,

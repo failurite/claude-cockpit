@@ -1,13 +1,22 @@
-import { app, BrowserWindow, ipcMain, nativeImage } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, nativeImage } from 'electron'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { existsSync } from 'fs'
 import { spawn } from 'child_process'
 import { SessionManager } from './sessions.js'
 import { startIngestServer, type IngestServer } from './ingest.js'
-import { initStore, getFlag, setFlag } from './store.js'
+import { initStore, getFlag, setFlag, getWorkspaces, saveWorkspaces } from './store.js'
 import { hookStatus, installHooks, uninstallHooks } from './hooks-install.js'
-import type { HookEvent } from '../shared/types.js'
+import {
+  isTmuxAvailable,
+  listCockpitSessions,
+  killCockpitSession,
+  killAllCockpitSessions
+} from './tmux.js'
+import type { HookEvent, Workspace, AppSettings } from '../shared/types.js'
+
+/** Fixed ingest port so a persistent tmux dev session can reach us after restarts. */
+const INGEST_PORT = 47615
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 /** Project root (out/main/index.js -> ../..). Also where the app's own repo lives in dev. */
@@ -112,7 +121,7 @@ async function bootstrap(): Promise<void> {
     }
   }
 
-  ingest = await startIngestServer(handleHookEvent)
+  ingest = await startIngestServer(handleHookEvent, INGEST_PORT)
   manager = new SessionManager(ingest.port)
 
   manager.on('data', (paneId: string, chunk: string) => {
@@ -124,7 +133,7 @@ async function bootstrap(): Promise<void> {
 
   // ---- IPC ----
   ipcMain.handle('sessions:list', () => manager.list())
-  ipcMain.handle('sessions:create', (_e, opts) => manager.create(opts))
+  ipcMain.handle('sessions:create', (_e, opts) => createSession(opts))
   ipcMain.handle('sessions:close', (_e, id: string) => manager.close(id))
   ipcMain.handle('sessions:rename', (_e, id: string, name: string) => manager.rename(id, name))
   ipcMain.handle('pty:attach', (_e, id: string) => manager.getBuffer(id))
@@ -138,9 +147,30 @@ async function bootstrap(): Promise<void> {
   ipcMain.handle('sessions:create-dev', () => createDevSession())
   ipcMain.handle('app:info', () => appInfo())
   ipcMain.handle('app:relaunch', (_e, opts) => relaunchApp(opts))
+  ipcMain.handle('tmux:available', () => isTmuxAvailable())
+  ipcMain.handle('tmux:list', () => listCockpitSessions())
+  ipcMain.handle('tmux:kill', (_e, name: string) => {
+    killCockpitSession(name)
+    return listCockpitSessions()
+  })
+  ipcMain.handle('settings:get', () => getSettings())
+  ipcMain.handle('settings:update', (_e, patch: Partial<AppSettings>) => updateSettings(patch))
+  ipcMain.handle('dialog:pick-folder', () => pickFolder())
+  ipcMain.handle('workspaces:list', () => getWorkspaces())
+  ipcMain.handle('workspaces:save', (_e, ws: Workspace) => upsertWorkspace(ws))
+  ipcMain.handle('workspaces:remove', (_e, id: string) => removeWorkspace(id))
 
   // Restore panes from the previous run (resumes Claude conversations where possible).
   manager.restore()
+}
+
+function getSettings(): AppSettings {
+  return { killTmuxOnQuit: getFlag('killTmuxOnQuit') }
+}
+
+function updateSettings(patch: Partial<AppSettings>): AppSettings {
+  if (typeof patch.killTmuxOnQuit === 'boolean') setFlag('killTmuxOnQuit', patch.killTmuxOnQuit)
+  return getSettings()
 }
 
 /** Info about the app's own repo + runtime. */
@@ -155,14 +185,62 @@ function appInfo(): {
   return { repoRoot: APP_ROOT, devAvailable, isDev: !app.isPackaged, hooksJustInstalled }
 }
 
+/** Resolve cwd + default options from a workspace (if any) and spawn a session. */
+function createSession(opts?: {
+  workspaceId?: string | null
+  cwd?: string
+  command?: string
+  name?: string
+  options?: Partial<import('../shared/types.js').SessionOptions>
+}): ReturnType<SessionManager['create']> {
+  let { cwd, options } = opts ?? {}
+  const workspaceId = opts?.workspaceId ?? null
+  if (workspaceId) {
+    const ws = getWorkspaces().find((w) => w.id === workspaceId)
+    if (ws) {
+      cwd = ws.path
+      options = { ...ws.defaults, ...(opts?.options ?? {}) }
+    }
+  }
+  return manager.create({ cwd, command: opts?.command, name: opts?.name, workspaceId, options })
+}
+
 /** The special "work on claude-cockpit itself" session, opened in the app's repo. */
 function createDevSession(): ReturnType<SessionManager['create']> {
   return manager.create({
     cwd: APP_ROOT,
     command: 'claude',
     name: 'Cockpit Dev',
-    kind: 'dev'
+    kind: 'dev',
+    // Plain `claude` for self-development (no skip-permissions / chrome by default).
+    options: { dangerouslySkipPermissions: false, chrome: false, extraArgs: '' }
   })
+}
+
+/** Native folder picker; returns the chosen absolute path or null. */
+async function pickFolder(): Promise<string | null> {
+  const res = await dialog.showOpenDialog({
+    properties: ['openDirectory', 'createDirectory'],
+    title: 'Choose a workspace folder'
+  })
+  return res.canceled || !res.filePaths[0] ? null : res.filePaths[0]
+}
+
+/** Create or update a workspace (upsert by id); returns the full list. */
+function upsertWorkspace(ws: Workspace): Workspace[] {
+  const list = getWorkspaces()
+  const i = list.findIndex((w) => w.id === ws.id)
+  if (i === -1) list.push(ws)
+  else list[i] = ws
+  saveWorkspaces(list)
+  return list
+}
+
+/** Remove a workspace by id; returns the remaining list. */
+function removeWorkspace(id: string): Workspace[] {
+  const list = getWorkspaces().filter((w) => w.id !== id)
+  saveWorkspaces(list)
+  return list
 }
 
 function runBuild(): Promise<void> {
@@ -213,11 +291,34 @@ function createWindow(): void {
     }
   })
 
-  if (process.env.ELECTRON_RENDERER_URL) {
-    mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
-  } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+  const wc = mainWindow.webContents
+  const devUrl = process.env.ELECTRON_RENDERER_URL
+
+  const load = (): void => {
+    if (devUrl) mainWindow!.loadURL(devUrl)
+    else mainWindow!.loadFile(join(__dirname, '../renderer/index.html'))
   }
+
+  // If the renderer is loaded before the dev server is serving (common during a
+  // restart triggered by editing cockpit from inside cockpit), retry instead of
+  // leaving a blank window. -3 is ERR_ABORTED (a normal navigation), so ignore it.
+  let retries = 0
+  wc.on('did-fail-load', (_e, code) => {
+    if (code === -3 || mainWindow?.isDestroyed()) return
+    if (retries++ < 20) setTimeout(load, 300)
+  })
+
+  // If the renderer process crashes or hangs, reload it rather than showing black.
+  wc.on('render-process-gone', (_e, details) => {
+    console.error('[cockpit] renderer gone:', details.reason)
+    if (!mainWindow?.isDestroyed() && details.reason !== 'clean-exit') load()
+  })
+  wc.on('unresponsive', () => {
+    console.error('[cockpit] renderer unresponsive — reloading')
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.reload()
+  })
+
+  load()
 }
 
 app.whenReady().then(async () => {
@@ -240,6 +341,9 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  // Only kill tmux sessions on a real quit if the user opted in. Dev restarts
+  // (which SIGTERM the process) generally skip before-quit, so survival is preserved.
+  if (getFlag('killTmuxOnQuit')) killAllCockpitSessions()
   manager?.disposeAll()
   ingest?.close()
 })

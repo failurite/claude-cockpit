@@ -1,14 +1,30 @@
-import { useEffect, useState, useCallback } from 'react'
-import type { TerminalSession, HookInstallState, AppInfo } from '../../shared/types'
+import { useCallback, useEffect, useState } from 'react'
+import type {
+  AppInfo,
+  HookInstallState,
+  TerminalSession,
+  Workspace
+} from '../../shared/types'
+import { DEFAULT_SESSION_OPTIONS } from '../../shared/types'
 import { Sidebar } from './components/Sidebar'
 import { TerminalView } from './components/TerminalView'
+import { LaunchDialog, type LaunchValues } from './components/LaunchDialog'
+import { SettingsPanel } from './components/SettingsPanel'
+
+/** Which modal (if any) is open, and the context it needs. */
+type Dialog =
+  | { kind: 'workspace-new' }
+  | { kind: 'workspace-edit'; ws: Workspace }
+  | { kind: 'session-custom'; workspaceId: string }
 
 export default function App(): JSX.Element {
   const [sessions, setSessions] = useState<TerminalSession[]>([])
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
   const [hooks, setHooks] = useState<HookInstallState | null>(null)
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
+  const [dialog, setDialog] = useState<Dialog | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   // Initial load + live updates.
   useEffect(() => {
@@ -16,16 +32,13 @@ export default function App(): JSX.Element {
       setSessions(s)
       if (s.length && !activeId) setActiveId(s[0].id)
     })
+    window.cockpit.workspaces.list().then(setWorkspaces)
     const off = window.cockpit.onSessionsChanged(setSessions)
     window.cockpit.hooks.status().then(setHooks)
     window.cockpit.appInfo().then((info) => {
       setAppInfo(info)
-      if (info.hooksJustInstalled) {
-        setNotice(
-          'Installed status hooks into ~/.claude/settings.json (a backup was saved first) ' +
-            'so sessions show live status. You can remove them anytime — see docs/HOOKS.md.'
-        )
-      }
+      // Surface the one-time auto-install in Settings rather than a banner.
+      if (info.hooksJustInstalled) setSettingsOpen(true)
     })
     return off
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -38,13 +51,12 @@ export default function App(): JSX.Element {
     }
   }, [sessions, activeId])
 
-  const createSession = useCallback(async () => {
-    const s = await window.cockpit.createSession()
+  const newSession = useCallback(async (workspaceId: string) => {
+    const s = await window.cockpit.createSession({ workspaceId })
     setActiveId(s.id)
   }, [])
 
   const createDevSession = useCallback(async () => {
-    // Reuse the existing dev session if one is already open.
     const existing = sessions.find((s) => s.kind === 'dev')
     if (existing) return setActiveId(existing.id)
     const s = await window.cockpit.createDevSession()
@@ -60,50 +72,103 @@ export default function App(): JSX.Element {
   const installHooks = useCallback(async () => {
     setHooks(await window.cockpit.hooks.install())
   }, [])
-
-  const relaunch = useCallback(async (rebuild: boolean) => {
-    setNotice(rebuild ? 'Rebuilding…' : 'Relaunching…')
-    const res = await window.cockpit.relaunchApp({ rebuild })
-    if (!res.ok) setNotice(res.message ?? 'Relaunch unavailable.')
+  const uninstallHooks = useCallback(async () => {
+    setHooks(await window.cockpit.hooks.uninstall())
   }, [])
 
+  // Returns an error/status message to show, or null on success.
+  const relaunch = useCallback(async (rebuild: boolean): Promise<string | null> => {
+    const res = await window.cockpit.relaunchApp({ rebuild })
+    return res.ok ? null : res.message ?? 'Relaunch unavailable.'
+  }, [])
+
+  const deleteWorkspace = useCallback(async (id: string) => {
+    setWorkspaces(await window.cockpit.workspaces.remove(id))
+  }, [])
+
+  // --- dialog submit handlers ---
+  const submitDialog = useCallback(
+    async (v: LaunchValues) => {
+      if (!dialog) return
+      if (dialog.kind === 'workspace-new') {
+        const ws: Workspace = {
+          id: crypto.randomUUID(),
+          name: v.name || v.path.split('/').filter(Boolean).pop() || v.path,
+          path: v.path,
+          defaults: v.options
+        }
+        setWorkspaces(await window.cockpit.workspaces.save(ws))
+        const s = await window.cockpit.createSession({ workspaceId: ws.id })
+        setActiveId(s.id)
+      } else if (dialog.kind === 'workspace-edit') {
+        const ws: Workspace = { ...dialog.ws, name: v.name || dialog.ws.name, defaults: v.options }
+        setWorkspaces(await window.cockpit.workspaces.save(ws))
+      } else if (dialog.kind === 'session-custom') {
+        const s = await window.cockpit.createSession({
+          workspaceId: dialog.workspaceId,
+          name: v.name || undefined,
+          options: v.options
+        })
+        setActiveId(s.id)
+      }
+      setDialog(null)
+    },
+    [dialog]
+  )
+
   const active = sessions.find((s) => s.id === activeId) ?? null
+
+  // Resolve initial values for whichever dialog is open.
+  const dialogProps = ((): { mode: 'workspace' | 'session'; title: string; submit: string; initial: LaunchValues } | null => {
+    if (!dialog) return null
+    if (dialog.kind === 'workspace-new')
+      return {
+        mode: 'workspace',
+        title: 'New workspace',
+        submit: 'Create workspace',
+        initial: { name: '', path: '', options: { ...DEFAULT_SESSION_OPTIONS } }
+      }
+    if (dialog.kind === 'workspace-edit')
+      return {
+        mode: 'workspace',
+        title: 'Edit workspace',
+        submit: 'Save',
+        initial: { name: dialog.ws.name, path: dialog.ws.path, options: { ...dialog.ws.defaults } }
+      }
+    const ws = workspaces.find((w) => w.id === dialog.workspaceId)
+    return {
+      mode: 'session',
+      title: 'New session — custom settings',
+      submit: 'Create session',
+      initial: { name: '', path: ws?.path ?? '', options: { ...(ws?.defaults ?? DEFAULT_SESSION_OPTIONS) } }
+    }
+  })()
 
   return (
     <div className="app">
       <Sidebar
         sessions={sessions}
+        workspaces={workspaces}
         activeId={activeId}
         onSelect={setActiveId}
-        onCreate={createSession}
         onClose={closeSession}
         onRename={renameSession}
+        onNewSession={newSession}
+        onCustomSession={(workspaceId) => setDialog({ kind: 'session-custom', workspaceId })}
+        onNewWorkspace={() => setDialog({ kind: 'workspace-new' })}
+        onEditWorkspace={(ws) => setDialog({ kind: 'workspace-edit', ws })}
+        onDeleteWorkspace={deleteWorkspace}
         onCreateDev={appInfo?.devAvailable ? createDevSession : undefined}
-        onRelaunch={() => relaunch(true)}
+        onOpenSettings={() => setSettingsOpen(true)}
       />
       <main className="stage">
-        {hooks && !hooks.installed && (
-          <div className="hook-banner">
-            <span>
-              Status hooks aren’t installed, so live status will stay
-              “starting”. Install them into <code>~/.claude/settings.json</code>?
-            </span>
-            <button onClick={installHooks}>Install status hooks</button>
-          </div>
-        )}
-        {notice && (
-          <div className="notice-banner">
-            <span>{notice}</span>
-            <button onClick={() => setNotice(null)}>Dismiss</button>
-          </div>
-        )}
         <div className="terminals">
           {sessions.length === 0 && (
             <div className="empty">
               <h1>claude-cockpit</h1>
-              <p>No sessions yet.</p>
+              <p>No sessions yet. Create a workspace to get started.</p>
               <div className="empty-actions">
-                <button onClick={createSession}>+ New Claude session</button>
+                <button onClick={() => setDialog({ kind: 'workspace-new' })}>+ New workspace</button>
                 {appInfo?.devAvailable && (
                   <button className="ghost" onClick={createDevSession}>
                     🛠 Work on this app
@@ -136,6 +201,27 @@ export default function App(): JSX.Element {
           </footer>
         )}
       </main>
+
+      {dialogProps && (
+        <LaunchDialog
+          mode={dialogProps.mode}
+          title={dialogProps.title}
+          submitLabel={dialogProps.submit}
+          initial={dialogProps.initial}
+          onSubmit={submitDialog}
+          onCancel={() => setDialog(null)}
+        />
+      )}
+      {settingsOpen && (
+        <SettingsPanel
+          hooks={hooks}
+          appInfo={appInfo}
+          onInstallHooks={installHooks}
+          onUninstallHooks={uninstallHooks}
+          onRelaunch={relaunch}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
     </div>
   )
 }

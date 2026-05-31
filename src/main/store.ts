@@ -1,6 +1,7 @@
 import { app } from 'electron'
 import { join } from 'path'
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
+import type { SessionOptions, Workspace } from '../shared/types.js'
 
 /** A pane as persisted to disk so it can be restored on next launch. */
 export interface PersistedSession {
@@ -10,21 +11,31 @@ export interface PersistedSession {
   kind: 'normal' | 'dev'
   /** Claude's session id, so we can `claude --resume <id>` to restore the conversation. */
   claudeSessionId: string | null
+  /** Workspace this session belonged to (null for the dev session / ad-hoc). */
+  workspaceId: string | null
+  /** Launch options, so the claude command is rebuilt identically on restore. */
+  options: SessionOptions
 }
 
 /**
  * Tiny JSON-file store for things that should survive restarts:
  *   - user-assigned pane names (keyed by a stable name-key)
  *   - the set of open panes, for restore-on-launch
+ *   - workspaces (directory + default launch options)
  */
 interface Persisted {
   names: Record<string, string>
   sessions: PersistedSession[]
+  workspaces: Workspace[]
   /** One-time flags, e.g. whether we've already auto-installed status hooks. */
   flags: Record<string, boolean>
 }
 
-let cache: Persisted = { names: {}, sessions: [], flags: {} }
+function empty(): Persisted {
+  return { names: {}, sessions: [], workspaces: [], flags: {} }
+}
+
+let cache: Persisted = empty()
 let filePath = ''
 
 export function initStore(): void {
@@ -33,9 +44,9 @@ export function initStore(): void {
   filePath = join(dir, 'claude-cockpit.json')
   if (existsSync(filePath)) {
     try {
-      cache = { names: {}, sessions: [], flags: {}, ...JSON.parse(readFileSync(filePath, 'utf8')) }
+      cache = { ...empty(), ...JSON.parse(readFileSync(filePath, 'utf8')) }
     } catch {
-      cache = { names: {}, sessions: [], flags: {} }
+      cache = empty()
     }
   }
 }
@@ -73,5 +84,14 @@ export function getSavedSessions(): PersistedSession[] {
 
 export function saveSessions(sessions: PersistedSession[]): void {
   cache.sessions = sessions
+  flush()
+}
+
+export function getWorkspaces(): Workspace[] {
+  return cache.workspaces
+}
+
+export function saveWorkspaces(workspaces: Workspace[]): void {
+  cache.workspaces = workspaces
   flush()
 }

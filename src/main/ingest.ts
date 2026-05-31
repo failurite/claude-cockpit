@@ -11,7 +11,15 @@ export interface IngestServer {
  * inherits CLAUDE_COCKPIT_PANE_ID + CLAUDE_COCKPIT_INGEST_PORT from its pty, so the
  * emit script can tell us which pane fired without us knowing Claude's id yet.
  */
-export function startIngestServer(onEvent: (e: HookEvent) => void): Promise<IngestServer> {
+/**
+ * @param preferredPort Try this fixed port first (so a persistent tmux-backed
+ *   session, whose hook env is frozen at creation, can still reach us after a
+ *   restart). Falls back to an OS-assigned ephemeral port if it's taken.
+ */
+export function startIngestServer(
+  onEvent: (e: HookEvent) => void,
+  preferredPort = 0
+): Promise<IngestServer> {
   return new Promise((resolve, reject) => {
     const server: Server = createServer((req, res) => {
       if (req.method !== 'POST') {
@@ -32,12 +40,22 @@ export function startIngestServer(onEvent: (e: HookEvent) => void): Promise<Inge
         res.writeHead(204).end()
       })
     })
-    server.on('error', reject)
-    // 127.0.0.1 + port 0 => OS picks a free ephemeral port.
-    server.listen(0, '127.0.0.1', () => {
+
+    const done = (): void => {
       const addr = server.address()
       const port = typeof addr === 'object' && addr ? addr.port : 0
       resolve({ port, close: () => server.close() })
+    }
+
+    let triedFallback = false
+    server.on('error', (err: NodeJS.ErrnoException) => {
+      if (!triedFallback && preferredPort && err.code === 'EADDRINUSE') {
+        triedFallback = true
+        server.listen(0, '127.0.0.1', done) // fall back to ephemeral
+      } else {
+        reject(err)
+      }
     })
+    server.listen(preferredPort, '127.0.0.1', done)
   })
 }

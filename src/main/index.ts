@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, nativeImage } from 'electron'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { SessionManager } from './sessions.js'
@@ -8,6 +8,9 @@ import { hookStatus, installHooks, uninstallHooks } from './hooks-install.js'
 import type { HookEvent } from '../shared/types.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
+/** Project root (out/main/index.js -> ../..). Also where the app's own repo lives in dev. */
+const APP_ROOT = join(__dirname, '..', '..')
+const ICON_PNG = join(APP_ROOT, 'build', 'icon.png')
 
 let mainWindow: BrowserWindow | null = null
 let manager: SessionManager
@@ -121,6 +124,7 @@ function createWindow(): void {
     height: 900,
     backgroundColor: '#14161b',
     titleBarStyle: 'hiddenInset',
+    icon: ICON_PNG,
     webPreferences: {
       preload: join(__dirname, '../preload/index.mjs'),
       sandbox: false,
@@ -136,6 +140,11 @@ function createWindow(): void {
 }
 
 app.whenReady().then(async () => {
+  // Dock icon (macOS dev) — packaged builds get it from the bundle.
+  if (process.platform === 'darwin' && app.dock) {
+    const img = nativeImage.createFromPath(ICON_PNG)
+    if (!img.isEmpty()) app.dock.setIcon(img)
+  }
   await bootstrap()
   createWindow()
   app.on('activate', () => {

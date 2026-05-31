@@ -69,19 +69,28 @@ export function Sidebar({
                   onClick={(e) => e.stopPropagation()}
                 />
               ) : (
-                <span
-                  className="session-name"
-                  onDoubleClick={(e) => {
-                    e.stopPropagation()
-                    startEdit(s)
-                  }}
-                  title="Double-click to rename"
-                >
-                  {s.name}
+                <span className="session-name-row">
+                  <span
+                    className="session-name"
+                    onDoubleClick={(e) => {
+                      e.stopPropagation()
+                      startEdit(s)
+                    }}
+                    title="Double-click to rename"
+                  >
+                    {s.name}
+                  </span>
+                  {s.usingChrome && (
+                    <span className="chrome-chip" title={`Driving Chrome: ${s.chromeActivity ?? ''}`}>
+                      🌐
+                    </span>
+                  )}
                 </span>
               )}
               <span className="session-sub">
-                {STATUS_LABEL[s.status]}
+                {s.usingChrome && s.chromeActivity
+                  ? s.chromeActivity
+                  : STATUS_LABEL[s.status]}
                 {s.subagentCount > 0 && ` · ⛓ ${s.subagentCount}`}
               </span>
             </div>

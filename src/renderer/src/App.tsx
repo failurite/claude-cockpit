@@ -82,6 +82,11 @@ export default function App(): JSX.Element {
             <strong>{active.name}</strong>
             <span className="muted">{active.status}</span>
             <span className="muted">· {active.lastActivity}</span>
+            {active.usingChrome && (
+              <span className="chrome-badge" title={active.chromeActivity ?? 'driving Chrome'}>
+                🌐 Chrome{active.chromeActivity ? ` · ${active.chromeActivity}` : ''}
+              </span>
+            )}
             {active.subagentCount > 0 && (
               <span className="subagents">⛓ {active.subagentCount} sub-agents</span>
             )}

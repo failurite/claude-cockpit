@@ -94,7 +94,13 @@ This is a heuristic and a good place to contribute a more exact implementation
 
 ## Chrome integration
 
-> Roadmap, not yet implemented.
+**Implemented: activity detection.** `handleHookEvent` flags a session as
+`usingChrome` when a `PreToolUse` event carries a browser MCP tool
+(`mcp__…chrome…`, see `isBrowserTool`/`browserToolTarget` in `main/index.ts`),
+and clears it on `Stop`. The renderer shows a 🌐 badge with the action. This needs
+no Chrome connection at all — it's read straight from the hook stream.
+
+**Roadmap: visual tab mirror.**
 
 `claude --chrome` drives Chrome through the Claude-in-Chrome extension over a
 native-messaging host using the Chrome DevTools Protocol (CDP). The plan:

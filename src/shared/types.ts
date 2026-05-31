@@ -23,6 +23,10 @@ export interface TerminalSession {
   status: SessionStatus
   /** Count of currently-active sub-agents (Task tool / sidechains). */
   subagentCount: number
+  /** True while this session is actively driving Chrome (claude-in-chrome MCP tools). */
+  usingChrome: boolean
+  /** Most recent browser action target (e.g. host or tool), shown when usingChrome. */
+  chromeActivity: string | null
   /** Last status-changing event label, for the UI subtitle. */
   lastActivity: string
   /** ms epoch of last update (stamped in main). */

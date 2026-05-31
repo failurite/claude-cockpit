@@ -75,6 +75,8 @@ export class SessionManager extends EventEmitter {
       claudeSessionId: null,
       status: 'starting',
       subagentCount: 0,
+      usingChrome: false,
+      chromeActivity: null,
       lastActivity: 'launching',
       updatedAt: Date.now()
     }
@@ -159,6 +161,11 @@ export class SessionManager extends EventEmitter {
 
   setStatus(paneId: string, status: SessionStatus, activity: string): void {
     this.patch(paneId, { status, lastActivity: activity })
+  }
+
+  /** Mark whether this session is currently driving Chrome, with an optional target. */
+  setUsingChrome(paneId: string, using: boolean, activity: string | null = null): void {
+    this.patch(paneId, { usingChrome: using, chromeActivity: using ? activity : null })
   }
 
   paneIdForClaudeSession(claudeSessionId: string): string | undefined {

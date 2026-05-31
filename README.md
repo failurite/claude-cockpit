@@ -28,8 +28,11 @@ work, and which is done. `claude-cockpit` gives you:
   becomes "auth refactor". Names persist.
 - **Sub-agent counts** — see how many sub-agents (Task tool / sidechains) a
   session currently has running.
-- **(Roadmap) Linked Chrome tabs** — when a session uses `claude --chrome`, show
-  the tabs it's driving, tied to the session driving them.
+- **Chrome activity indicator** — when a session uses `claude --chrome`, a 🌐
+  badge lights up in real time (with the action, e.g. `navigate github.com`) so
+  you can see which session is driving the browser right now.
+- **(Roadmap) Linked Chrome tab views** — mirror the actual tabs a session is
+  driving, tied to the session driving them.
 
 ## How it works
 
@@ -63,7 +66,14 @@ Two independent signals drive the status panel:
    | `UserPromptSubmit`, `PreToolUse`, `PostToolUse` | **working** |
    | `Notification` (permission / elicitation) | **waiting** (needs you) |
    | `Notification` (idle prompt), `Stop` | **idle** |
+   | `PreToolUse` with an `mcp__*chrome*` tool | **🌐 driving Chrome** |
    | `SessionStart` / `SessionEnd` | started / ended |
+
+   Chrome detection works because `claude --chrome` drives the browser through
+   `claude-in-chrome` MCP tools (`mcp__claude-in-chrome__navigate`, …). Those
+   surface in `PreToolUse` as the `tool_name`, so the app flags the session as
+   actively browsing without needing any Chrome connection. The flag clears when
+   the turn ends (`Stop`).
 
 2. **Transcript watcher (sub-agents).** The app tails the session's JSONL
    transcript under `~/.claude/projects/` and counts `Task` tool calls that
@@ -101,7 +111,9 @@ npm start          # preview the production build
 
 ## Roadmap
 
-- [ ] **Linked Chrome tabs.** Mirror the tabs a `claude --chrome` session is
+- [x] **Chrome activity detection.** Show which session is driving Chrome right
+      now (via `claude-in-chrome` MCP tool calls in hooks). _Done._
+- [ ] **Linked Chrome tab views.** Mirror the tabs a `claude --chrome` session is
       driving, via CDP `Page.startScreencast`, tied to the driving session. See
       [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#chrome-integration) for the plan
       and the open feasibility question (CDP client contention).

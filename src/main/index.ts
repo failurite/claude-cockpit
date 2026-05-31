@@ -19,6 +19,28 @@ function emitScriptPath(): string {
   return join(__dirname, '..', '..', 'hooks', 'emit.mjs')
 }
 
+/** True for MCP tools that drive a browser (claude-in-chrome and friends). */
+function isBrowserTool(toolName: string): boolean {
+  return /^mcp__/.test(toolName) && /(chrome|browser|playwright|puppeteer)/i.test(toolName)
+}
+
+/** A short label for a browser tool call, e.g. "navigate example.com", or null if not a browser tool. */
+function browserToolTarget(e: HookEvent): string | null {
+  const toolName = String(e.tool_name || '')
+  if (!isBrowserTool(toolName)) return null
+  const action = toolName.split('__').slice(2).join('__') || 'browser'
+  const input = e.tool_input as { url?: string; href?: string } | undefined
+  const url = input?.url || input?.href
+  if (typeof url === 'string') {
+    try {
+      return `${action} ${new URL(url).host}`
+    } catch {
+      /* not a URL */
+    }
+  }
+  return action
+}
+
 /** Map an incoming hook event to a status change on the right pane. */
 function handleHookEvent(e: HookEvent): void {
   let paneId = e.cockpit_pane_id
@@ -29,20 +51,24 @@ function handleHookEvent(e: HookEvent): void {
 
   const name = e.hook_event_name
   const tool = (e.tool_name as string) || 'a tool'
+  const browser = browserToolTarget(e)
   switch (name) {
     case 'SessionStart':
       return manager.setStatus(paneId, 'idle', 'session started')
     case 'UserPromptSubmit':
       return manager.setStatus(paneId, 'working', 'you sent a prompt')
     case 'PreToolUse':
-      return manager.setStatus(paneId, 'working', `running ${tool}`)
+      if (browser) manager.setUsingChrome(paneId, true, browser)
+      return manager.setStatus(paneId, 'working', browser ? `🌐 ${browser}` : `running ${tool}`)
     case 'PostToolUse':
-      return manager.setStatus(paneId, 'working', `ran ${tool}`)
+      return manager.setStatus(paneId, 'working', browser ? `🌐 ${browser}` : `ran ${tool}`)
     case 'SubagentStop':
       return manager.setStatus(paneId, 'working', 'a sub-agent finished')
     case 'Stop':
+      manager.setUsingChrome(paneId, false)
       return manager.setStatus(paneId, 'idle', 'finished — ready')
     case 'SessionEnd':
+      manager.setUsingChrome(paneId, false)
       return manager.setStatus(paneId, 'idle', 'session ended')
     case 'Notification': {
       const kind = String(e.notification_type || e.matcher || '').toLowerCase()

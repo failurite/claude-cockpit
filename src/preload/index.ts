@@ -15,6 +15,7 @@ ipcRenderer.on('sessions:changed', (_e, sessions: TerminalSession[]) => {
 const api: CockpitApi = {
   listSessions: () => ipcRenderer.invoke('sessions:list'),
   createSession: (opts) => ipcRenderer.invoke('sessions:create', opts),
+  createDevSession: () => ipcRenderer.invoke('sessions:create-dev'),
   closeSession: (id) => ipcRenderer.invoke('sessions:close', id),
   renameSession: (id, name) => ipcRenderer.invoke('sessions:rename', id, name),
   write: (id, data) => ipcRenderer.send('pty:write', id, data),
@@ -34,7 +35,9 @@ const api: CockpitApi = {
     status: () => ipcRenderer.invoke('hooks:status'),
     install: () => ipcRenderer.invoke('hooks:install'),
     uninstall: () => ipcRenderer.invoke('hooks:uninstall')
-  }
+  },
+  appInfo: () => ipcRenderer.invoke('app:info'),
+  relaunchApp: (opts) => ipcRenderer.invoke('app:relaunch', opts)
 }
 
 contextBridge.exposeInMainWorld('cockpit', api)

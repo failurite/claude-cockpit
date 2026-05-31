@@ -18,6 +18,8 @@ export interface TerminalSession {
   cwd: string
   /** The command line spawned (e.g. "claude"). */
   command: string
+  /** 'dev' = the special session that works on claude-cockpit itself; 'normal' = everything else. */
+  kind: 'normal' | 'dev'
   /** Claude Code's own sessionId, once we learn it from a hook/transcript. May be null for plain shells. */
   claudeSessionId: string | null
   status: SessionStatus
@@ -51,6 +53,8 @@ export interface HookEvent {
 export interface CockpitApi {
   listSessions(): Promise<TerminalSession[]>
   createSession(opts?: { cwd?: string; command?: string; name?: string }): Promise<TerminalSession>
+  /** Spawn the special "work on claude-cockpit itself" session in the app's own repo. */
+  createDevSession(): Promise<TerminalSession>
   closeSession(id: string): Promise<void>
   renameSession(id: string, name: string): Promise<void>
   /** Send user keystrokes/data into a pty. */
@@ -69,6 +73,24 @@ export interface CockpitApi {
     install(): Promise<HookInstallState>
     uninstall(): Promise<HookInstallState>
   }
+  /** Info about the app itself (e.g. whether the dev repo is available, repo path). */
+  appInfo(): Promise<AppInfo>
+  /** Persist state and relaunch the app, optionally rebuilding first. Restores sessions on boot. */
+  relaunchApp(opts?: { rebuild?: boolean }): Promise<{ ok: boolean; message?: string }>
+}
+
+export interface AppInfo {
+  /** Absolute path to the claude-cockpit repo (where the dev session opens). */
+  repoRoot: string
+  /** True if that path looks like the app's source checkout (has package.json + src). */
+  devAvailable: boolean
+  /** True when running the dev server (npm run dev) vs a packaged build. */
+  isDev: boolean
+}
+
+export interface HookInstallState {
+  installed: boolean
+  command: string | null
 }
 
 export interface HookInstallState {

@@ -3,7 +3,13 @@ import { homedir } from 'os'
 import pty from '@homebridge/node-pty-prebuilt-multiarch'
 import type { IPty } from '@homebridge/node-pty-prebuilt-multiarch'
 import type { SessionStatus, TerminalSession } from '../shared/types.js'
-import { getSavedName, saveName } from './store.js'
+import {
+  getSavedName,
+  saveName,
+  saveSessions,
+  getSavedSessions,
+  type PersistedSession
+} from './store.js'
 import { watchTranscriptForSession } from './transcripts.js'
 
 /** Cap on retained pty output for replay when a terminal view (re)mounts. */
@@ -42,17 +48,54 @@ export class SessionManager extends EventEmitter {
     this.emit('sessions', this.list())
   }
 
-  create(opts?: { cwd?: string; command?: string; name?: string }): TerminalSession {
+  /** Write the current pane set to disk so it can be restored next launch. */
+  private persist(): void {
+    const sessions: PersistedSession[] = [...this.panes.values()].map((p) => ({
+      name: p.session.name,
+      cwd: p.session.cwd,
+      command: p.session.command,
+      kind: p.session.kind,
+      claudeSessionId: p.session.claudeSessionId
+    }))
+    saveSessions(sessions)
+  }
+
+  /** Recreate panes saved from a previous run (called once at startup). */
+  restore(): void {
+    for (const s of getSavedSessions()) {
+      this.create({
+        cwd: s.cwd,
+        command: s.command,
+        name: s.name,
+        kind: s.kind,
+        resumeId: s.claudeSessionId
+      })
+    }
+  }
+
+  create(opts?: {
+    cwd?: string
+    command?: string
+    name?: string
+    kind?: 'normal' | 'dev'
+    /** If set (and command is claude), launch `claude --resume <id>` to restore a conversation. */
+    resumeId?: string | null
+  }): TerminalSession {
     const id = `pane-${++seq}-${Date.now().toString(36)}`
     const cwd = opts?.cwd || homedir()
     const command = opts?.command || 'claude'
+    const kind = opts?.kind || 'normal'
     const nameKey = `${cwd}::${command}`
     const name = opts?.name || getSavedName(nameKey) || `Session ${seq}`
+
+    // Resume a prior Claude conversation when we have its id.
+    const launch =
+      opts?.resumeId && command === 'claude' ? `claude --resume ${opts.resumeId}` : command
 
     const shell = process.env.SHELL || '/bin/zsh'
     // Login shell so GUI-launched apps still get the user's PATH, then exec the
     // target so the pane *is* claude (no lingering shell prompt).
-    const args = ['-l', '-c', `exec ${command}`]
+    const args = ['-l', '-c', `exec ${launch}`]
 
     const proc = pty.spawn(shell, args, {
       name: 'xterm-256color',
@@ -72,6 +115,7 @@ export class SessionManager extends EventEmitter {
       name,
       cwd,
       command,
+      kind,
       claudeSessionId: null,
       status: 'starting',
       subagentCount: 0,
@@ -94,6 +138,7 @@ export class SessionManager extends EventEmitter {
     })
 
     this.emitSessions()
+    this.persist()
     return session
   }
 
@@ -122,6 +167,7 @@ export class SessionManager extends EventEmitter {
     p.session.name = name
     saveName(`${p.session.cwd}::${p.session.command}`, name)
     this.patch(id, {})
+    this.persist()
   }
 
   close(id: string): void {
@@ -136,6 +182,7 @@ export class SessionManager extends EventEmitter {
     if (p.session.claudeSessionId) this.claudeIndex.delete(p.session.claudeSessionId)
     this.panes.delete(id)
     this.emitSessions()
+    this.persist()
   }
 
   /** Apply a partial update to a pane's session and broadcast. */
@@ -157,6 +204,7 @@ export class SessionManager extends EventEmitter {
       this.patch(paneId, { subagentCount: count })
     )
     this.patch(paneId, {})
+    this.persist()
   }
 
   setStatus(paneId: string, status: SessionStatus, activity: string): void {
@@ -172,7 +220,17 @@ export class SessionManager extends EventEmitter {
     return this.claudeIndex.get(claudeSessionId)
   }
 
+  /** Tear down all ptys on quit WITHOUT touching persisted state (so restore works). */
   disposeAll(): void {
-    for (const id of [...this.panes.keys()]) this.close(id)
+    for (const p of this.panes.values()) {
+      p.unwatch?.()
+      try {
+        p.proc.kill()
+      } catch {
+        /* already dead */
+      }
+    }
+    this.panes.clear()
+    this.claudeIndex.clear()
   }
 }

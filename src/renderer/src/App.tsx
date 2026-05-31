@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import type { TerminalSession, HookInstallState } from '../../shared/types'
+import type { TerminalSession, HookInstallState, AppInfo } from '../../shared/types'
 import { Sidebar } from './components/Sidebar'
 import { TerminalView } from './components/TerminalView'
 
@@ -7,6 +7,8 @@ export default function App(): JSX.Element {
   const [sessions, setSessions] = useState<TerminalSession[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
   const [hooks, setHooks] = useState<HookInstallState | null>(null)
+  const [appInfo, setAppInfo] = useState<AppInfo | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
 
   // Initial load + live updates.
   useEffect(() => {
@@ -16,6 +18,7 @@ export default function App(): JSX.Element {
     })
     const off = window.cockpit.onSessionsChanged(setSessions)
     window.cockpit.hooks.status().then(setHooks)
+    window.cockpit.appInfo().then(setAppInfo)
     return off
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -32,6 +35,14 @@ export default function App(): JSX.Element {
     setActiveId(s.id)
   }, [])
 
+  const createDevSession = useCallback(async () => {
+    // Reuse the existing dev session if one is already open.
+    const existing = sessions.find((s) => s.kind === 'dev')
+    if (existing) return setActiveId(existing.id)
+    const s = await window.cockpit.createDevSession()
+    setActiveId(s.id)
+  }, [sessions])
+
   const closeSession = useCallback((id: string) => window.cockpit.closeSession(id), [])
   const renameSession = useCallback(
     (id: string, name: string) => window.cockpit.renameSession(id, name),
@@ -40,6 +51,12 @@ export default function App(): JSX.Element {
 
   const installHooks = useCallback(async () => {
     setHooks(await window.cockpit.hooks.install())
+  }, [])
+
+  const relaunch = useCallback(async (rebuild: boolean) => {
+    setNotice(rebuild ? 'Rebuilding…' : 'Relaunching…')
+    const res = await window.cockpit.relaunchApp({ rebuild })
+    if (!res.ok) setNotice(res.message ?? 'Relaunch unavailable.')
   }, [])
 
   const active = sessions.find((s) => s.id === activeId) ?? null
@@ -53,6 +70,8 @@ export default function App(): JSX.Element {
         onCreate={createSession}
         onClose={closeSession}
         onRename={renameSession}
+        onCreateDev={appInfo?.devAvailable ? createDevSession : undefined}
+        onRelaunch={() => relaunch(true)}
       />
       <main className="stage">
         {hooks && !hooks.installed && (
@@ -64,12 +83,25 @@ export default function App(): JSX.Element {
             <button onClick={installHooks}>Install status hooks</button>
           </div>
         )}
+        {notice && (
+          <div className="notice-banner">
+            <span>{notice}</span>
+            <button onClick={() => setNotice(null)}>Dismiss</button>
+          </div>
+        )}
         <div className="terminals">
           {sessions.length === 0 && (
             <div className="empty">
               <h1>claude-cockpit</h1>
               <p>No sessions yet.</p>
-              <button onClick={createSession}>+ New Claude session</button>
+              <div className="empty-actions">
+                <button onClick={createSession}>+ New Claude session</button>
+                {appInfo?.devAvailable && (
+                  <button className="ghost" onClick={createDevSession}>
+                    🛠 Work on this app
+                  </button>
+                )}
+              </div>
             </div>
           )}
           {sessions.map((s) => (
@@ -80,6 +112,7 @@ export default function App(): JSX.Element {
           <footer className="statusbar">
             <span className={`dot ${active.status}`} />
             <strong>{active.name}</strong>
+            {active.kind === 'dev' && <span className="dev-tag">DEV</span>}
             <span className="muted">{active.status}</span>
             <span className="muted">· {active.lastActivity}</span>
             {active.usingChrome && (

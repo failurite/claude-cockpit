@@ -16,6 +16,9 @@ interface Props {
   onCreate: () => void
   onClose: (id: string) => void
   onRename: (id: string, name: string) => void
+  /** Provided only when the app's own repo is available (dev session). */
+  onCreateDev?: () => void
+  onRelaunch: () => void
 }
 
 export function Sidebar({
@@ -24,7 +27,9 @@ export function Sidebar({
   onSelect,
   onCreate,
   onClose,
-  onRename
+  onRename,
+  onCreateDev,
+  onRelaunch
 }: Props): JSX.Element {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
@@ -70,6 +75,11 @@ export function Sidebar({
                 />
               ) : (
                 <span className="session-name-row">
+                  {s.kind === 'dev' && (
+                    <span className="dev-chip" title="Works on claude-cockpit itself">
+                      🛠
+                    </span>
+                  )}
                   <span
                     className="session-name"
                     onDoubleClick={(e) => {
@@ -110,6 +120,14 @@ export function Sidebar({
       <div className="sidebar-foot">
         <button className="ghost-btn" onClick={onCreate}>
           + New Claude session
+        </button>
+        {onCreateDev && (
+          <button className="ghost-btn" onClick={onCreateDev} title="Open Claude in this app's repo">
+            🛠 Work on this app
+          </button>
+        )}
+        <button className="ghost-btn subtle" onClick={onRelaunch} title="Rebuild and relaunch, restoring sessions">
+          ⟳ Rebuild &amp; relaunch
         </button>
       </div>
     </aside>

@@ -2,16 +2,27 @@ import { app } from 'electron'
 import { join } from 'path'
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 
-/**
- * Tiny JSON-file store for things that should survive restarts.
- * Currently: user-assigned pane names, keyed by a stable name-key.
- */
-interface Persisted {
-  /** nameKey -> custom name. nameKey is cwd+command so names stick across restarts. */
-  names: Record<string, string>
+/** A pane as persisted to disk so it can be restored on next launch. */
+export interface PersistedSession {
+  name: string
+  cwd: string
+  command: string
+  kind: 'normal' | 'dev'
+  /** Claude's session id, so we can `claude --resume <id>` to restore the conversation. */
+  claudeSessionId: string | null
 }
 
-let cache: Persisted = { names: {} }
+/**
+ * Tiny JSON-file store for things that should survive restarts:
+ *   - user-assigned pane names (keyed by a stable name-key)
+ *   - the set of open panes, for restore-on-launch
+ */
+interface Persisted {
+  names: Record<string, string>
+  sessions: PersistedSession[]
+}
+
+let cache: Persisted = { names: {}, sessions: [] }
 let filePath = ''
 
 export function initStore(): void {
@@ -20,9 +31,9 @@ export function initStore(): void {
   filePath = join(dir, 'claude-cockpit.json')
   if (existsSync(filePath)) {
     try {
-      cache = { names: {}, ...JSON.parse(readFileSync(filePath, 'utf8')) }
+      cache = { names: {}, sessions: [], ...JSON.parse(readFileSync(filePath, 'utf8')) }
     } catch {
-      cache = { names: {} }
+      cache = { names: {}, sessions: [] }
     }
   }
 }
@@ -42,5 +53,14 @@ export function getSavedName(nameKey: string): string | undefined {
 
 export function saveName(nameKey: string, name: string): void {
   cache.names[nameKey] = name
+  flush()
+}
+
+export function getSavedSessions(): PersistedSession[] {
+  return cache.sessions
+}
+
+export function saveSessions(sessions: PersistedSession[]): void {
+  cache.sessions = sessions
   flush()
 }

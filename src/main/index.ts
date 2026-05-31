@@ -1,6 +1,8 @@
 import { app, BrowserWindow, ipcMain, nativeImage } from 'electron'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
+import { existsSync } from 'fs'
+import { spawn } from 'child_process'
 import { SessionManager } from './sessions.js'
 import { startIngestServer, type IngestServer } from './ingest.js'
 import { initStore } from './store.js'
@@ -116,6 +118,63 @@ async function bootstrap(): Promise<void> {
   ipcMain.handle('hooks:status', () => hookStatus(emitScriptPath()))
   ipcMain.handle('hooks:install', () => installHooks(emitScriptPath()))
   ipcMain.handle('hooks:uninstall', () => uninstallHooks(emitScriptPath()))
+  ipcMain.handle('sessions:create-dev', () => createDevSession())
+  ipcMain.handle('app:info', () => appInfo())
+  ipcMain.handle('app:relaunch', (_e, opts) => relaunchApp(opts))
+
+  // Restore panes from the previous run (resumes Claude conversations where possible).
+  manager.restore()
+}
+
+/** Info about the app's own repo + runtime. */
+function appInfo(): { repoRoot: string; devAvailable: boolean; isDev: boolean } {
+  const devAvailable =
+    existsSync(join(APP_ROOT, 'package.json')) && existsSync(join(APP_ROOT, 'src'))
+  return { repoRoot: APP_ROOT, devAvailable, isDev: !app.isPackaged }
+}
+
+/** The special "work on claude-cockpit itself" session, opened in the app's repo. */
+function createDevSession(): ReturnType<SessionManager['create']> {
+  return manager.create({
+    cwd: APP_ROOT,
+    command: 'claude',
+    name: 'Cockpit Dev',
+    kind: 'dev'
+  })
+}
+
+function runBuild(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn('npm', ['run', 'build'], { cwd: APP_ROOT, stdio: 'ignore' })
+    child.on('error', reject)
+    child.on('exit', (code) =>
+      code === 0 ? resolve() : reject(new Error(`build exited ${code}`))
+    )
+  })
+}
+
+/** Persist + relaunch (packaged), optionally rebuilding first. Sessions are already persisted. */
+async function relaunchApp(opts?: {
+  rebuild?: boolean
+}): Promise<{ ok: boolean; message?: string }> {
+  if (app.isPackaged) {
+    try {
+      if (opts?.rebuild) await runBuild()
+    } catch (e) {
+      return { ok: false, message: `Build failed: ${(e as Error).message}` }
+    }
+    app.relaunch()
+    app.exit(0)
+    return { ok: true }
+  }
+  // Dev: electron-vite owns the process; a hard relaunch would kill the dev server.
+  // Code edits already hot-restart the app, so we don't tear it down here.
+  return {
+    ok: false,
+    message:
+      'In dev (npm run dev) the app hot-reloads on code changes automatically. ' +
+      'Self-relaunch is available in the packaged build.'
+  }
 }
 
 function createWindow(): void {

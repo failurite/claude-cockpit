@@ -1,8 +1,8 @@
 <svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#222633"/>
-      <stop offset="1" stop-color="#13151b"/>
+      <stop offset="0" stop-color="#262b38"/>
+      <stop offset="1" stop-color="#15171d"/>
     </linearGradient>
     <linearGradient id="paneBack" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#3a4156"/>
@@ -13,42 +13,40 @@
       <stop offset="1" stop-color="#21252e"/>
     </linearGradient>
     <radialGradient id="halo" cx="0.5" cy="0.5" r="0.5">
-      <stop offset="0" stop-color="#e08a63" stop-opacity="0.55"/>
+      <stop offset="0" stop-color="#e08a63" stop-opacity="0.5"/>
       <stop offset="1" stop-color="#e08a63" stop-opacity="0"/>
     </radialGradient>
     <linearGradient id="spark" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#e89878"/>
+      <stop offset="0" stop-color="#ec9c7c"/>
       <stop offset="1" stop-color="#d7775a"/>
     </linearGradient>
   </defs>
 
-  <!-- App squircle -->
-  <rect x="0" y="0" width="1024" height="1024" rx="229" ry="229" fill="url(#bg)"/>
+  <!-- Apple icon grid: 824x824 body centered in a 1024 canvas, transparent margin. -->
+  <g transform="translate(100 100) scale(0.8046875)">
+    <!-- App squircle -->
+    <rect x="0" y="0" width="1024" height="1024" rx="229" ry="229" fill="url(#bg)"/>
 
-  <!-- Back terminal pane (offset, suggests multiple sessions) -->
-  <g transform="rotate(-5 512 560)">
-    <rect x="214" y="300" width="520" height="404" rx="40" fill="url(#paneBack)" stroke="#4d5469" stroke-width="3"/>
-  </g>
+    <!-- Back terminal pane (offset, suggests multiple sessions) -->
+    <g transform="rotate(-5 512 560)">
+      <rect x="214" y="300" width="520" height="404" rx="40" fill="url(#paneBack)" stroke="#4d5469" stroke-width="3"/>
+    </g>
 
-  <!-- Front terminal pane -->
-  <g transform="rotate(4 540 600)">
-    <rect x="300" y="372" width="520" height="404" rx="40" fill="url(#paneFront)" stroke="#525a70" stroke-width="3"/>
-    <!-- divider under title bar -->
-    <line x1="318" y1="452" x2="802" y2="452" stroke="#444b5e" stroke-width="2"/>
-    <!-- title bar dots -->
-    <circle cx="346" cy="420" r="11" fill="#e0655f"/>
-    <circle cx="384" cy="420" r="11" fill="#e0b14f"/>
-    <circle cx="422" cy="420" r="11" fill="#5fbf73"/>
-    <!-- prompt chevron + cursor -->
-    <path d="M 346 506 L 398 548 L 346 590" fill="none" stroke="#e89878" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
-    <rect x="430" y="566" width="120" height="24" rx="12" fill="#6b748f"/>
-  </g>
+    <!-- Front terminal pane -->
+    <g transform="rotate(4 540 600)">
+      <rect x="300" y="372" width="520" height="404" rx="40" fill="url(#paneFront)" stroke="#525a70" stroke-width="3"/>
+      <line x1="318" y1="452" x2="802" y2="452" stroke="#444b5e" stroke-width="2"/>
+      <circle cx="346" cy="420" r="11" fill="#e0655f"/>
+      <circle cx="384" cy="420" r="11" fill="#e0b14f"/>
+      <circle cx="422" cy="420" r="11" fill="#5fbf73"/>
+      <path d="M 346 506 L 398 548 L 346 590" fill="none" stroke="#ec9c7c" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+      <rect x="430" y="566" width="120" height="24" rx="12" fill="#6b748f"/>
+    </g>
 
-  <!-- Claude-style spark badge (original artwork), upper-right -->
-  <g transform="translate(742 326)">
-    <circle cx="0" cy="0" r="190" fill="url(#halo)"/>
-    <g fill="url(#spark)">
-      <g>
+    <!-- Claude-style spark badge (original artwork), upper-right -->
+    <g transform="translate(742 326)">
+      <circle cx="0" cy="0" r="190" fill="url(#halo)"/>
+      <g fill="url(#spark)">
         <rect x="-26" y="-150" width="52" height="120" rx="26"/>
         <rect x="-26" y="-150" width="52" height="120" rx="26" transform="rotate(45)"/>
         <rect x="-26" y="-150" width="52" height="120" rx="26" transform="rotate(90)"/>
@@ -57,8 +55,8 @@
         <rect x="-26" y="-150" width="52" height="120" rx="26" transform="rotate(225)"/>
         <rect x="-26" y="-150" width="52" height="120" rx="26" transform="rotate(270)"/>
         <rect x="-26" y="-150" width="52" height="120" rx="26" transform="rotate(315)"/>
+        <circle cx="0" cy="0" r="54"/>
       </g>
-      <circle cx="0" cy="0" r="54"/>
     </g>
   </g>
 </svg>

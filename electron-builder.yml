@@ -1,0 +1,68 @@
+# electron-builder packaging config. `npm run dist` builds (electron-vite) then
+# packages with this. See README "Install & update" for signing/notarization.
+appId: com.failurite.claude-cockpit
+productName: Claude Cockpit
+copyright: Copyright © 2026 failurite
+
+directories:
+  # build/ holds icons + entitlements; dist/ is where installers land.
+  buildResources: build
+  output: dist
+
+# What goes inside app.asar. Source/dev files are excluded; only the compiled
+# `out/` bundle and package.json are needed at runtime.
+files:
+  - out/**/*
+  - package.json
+  - '!**/*.{ts,tsx,map}'
+  - '!**/{tsconfig.*,electron.vite.config.*,electron-builder.yml}'
+
+# Native modules and the hook script must live OUTSIDE the asar archive.
+# node-pty loads a .node binary; emit.mjs is run by Claude as an external process.
+asarUnpack:
+  - '**/node_modules/@homebridge/node-pty-prebuilt-multiarch/**'
+  - '**/*.node'
+
+# hooks/ ships next to the app (Contents/Resources/hooks) so Claude Code can run
+# emit.mjs — emitScriptPath() resolves here via process.resourcesPath when packaged.
+extraResources:
+  - from: hooks
+    to: hooks
+  # mcp/ ships next to the app too — Claude (an external process) runs
+  # cockpit-browser.mjs as a stdio MCP server for embedded-browser control.
+  - from: mcp
+    to: mcp
+
+mac:
+  category: public.app-category.developer-tools
+  icon: build/icon.icns
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  target:
+    # dmg = the draggable installer; zip = required by electron-updater for
+    # macOS auto-update (Squirrel.Mac applies the diff from the zip).
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
+  # Hardened runtime + entitlements are required for notarization (and harmless
+  # on an unsigned local build, which simply skips signing).
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # Notarization ON so auto-update works (macOS only applies updates to a
+  # notarized app). Requires APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID
+  # in the environment at release time. `npm run dist` without those creds will
+  # fail at the notarize step — use a signed local build or set them.
+  notarize:
+    teamId: 4FFW6TSXC8
+
+dmg:
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+# Auto-update feed. `npm run release` publishes installers here; the running app
+# checks this repo's Releases for newer versions.
+publish:
+  provider: github
+  owner: failurite
+  repo: claude-cockpit

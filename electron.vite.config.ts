@@ -6,6 +6,10 @@ export default defineConfig({
   main: {
     // node-pty + chokidar are native/Node deps: keep them external (not bundled).
     plugins: [externalizeDepsPlugin()],
+    // Bake the repo path in so the packaged app's dev session opens the real
+    // checkout (not the .app bundle). process.cwd() is the repo root for both
+    // `electron-vite dev` and `electron-vite build`.
+    define: { __REPO_ROOT__: JSON.stringify(process.cwd()) },
     build: {
       rollupOptions: {
         input: { index: resolve(__dirname, 'src/main/index.ts') }

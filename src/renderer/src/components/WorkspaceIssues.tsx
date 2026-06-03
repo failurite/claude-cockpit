@@ -21,6 +21,8 @@ export function WorkspaceIssues({ workspaceId, path, sessions, onStart }: Props)
   const [issues, setIssues] = useState<IssueSummary[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  /** Active label filters; an issue must carry ALL selected labels to show. */
+  const [labelFilter, setLabelFilter] = useState<Set<string>>(new Set())
 
   const refresh = async (): Promise<void> => {
     setLoading(true)
@@ -42,6 +44,18 @@ export function WorkspaceIssues({ workspaceId, path, sessions, onStart }: Props)
   const sessionFor = (n: number): TerminalSession | undefined =>
     sessions.find((s) => s.issue?.number === n)
 
+  const toggleLabel = (l: string): void =>
+    setLabelFilter((prev) => {
+      const next = new Set(prev)
+      next.has(l) ? next.delete(l) : next.add(l)
+      return next
+    })
+
+  const allLabels = [...new Set((issues ?? []).flatMap((i) => i.labels))].sort()
+  const visible = (issues ?? []).filter(
+    (i) => labelFilter.size === 0 || [...labelFilter].every((l) => i.labels.includes(l))
+  )
+
   return (
     <div className="ws-issues">
       <button className="ws-issues-toggle" onClick={toggle}>
@@ -55,7 +69,29 @@ export function WorkspaceIssues({ workspaceId, path, sessions, onStart }: Props)
           {issues && issues.length === 0 && !loading && (
             <div className="ws-issues-note">No open issues 🎉</div>
           )}
-          {issues?.map((i) => {
+          {allLabels.length > 0 && (
+            <div className="ws-issue-filters">
+              {allLabels.map((l) => (
+                <button
+                  key={l}
+                  className={`ws-issue-label filter ${labelFilter.has(l) ? 'active' : ''}`}
+                  onClick={() => toggleLabel(l)}
+                  title={labelFilter.has(l) ? 'Remove filter' : 'Filter by label'}
+                >
+                  {l}
+                </button>
+              ))}
+              {labelFilter.size > 0 && (
+                <button className="ws-issue-label filter" onClick={() => setLabelFilter(new Set())}>
+                  × clear
+                </button>
+              )}
+            </div>
+          )}
+          {issues && labelFilter.size > 0 && visible.length === 0 && (
+            <div className="ws-issues-note">No issues match the selected labels.</div>
+          )}
+          {visible.map((i) => {
             const live = sessionFor(i.number)
             return (
               <div key={i.number} className="ws-issue" title={i.url}>

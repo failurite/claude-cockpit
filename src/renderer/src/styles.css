@@ -299,6 +299,24 @@ body {
   padding: 0 5px;
   font-size: 10px;
 }
+.ws-issue-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-bottom: 2px;
+}
+.ws-issue-label.filter {
+  border: 1px solid var(--border);
+  color: var(--muted);
+  cursor: pointer;
+}
+.ws-issue-label.filter:hover {
+  color: var(--text);
+}
+.ws-issue-label.filter.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
 .ws-issues-note {
   font-size: 10px;
 }

@@ -3,10 +3,15 @@ import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { existsSync } from 'fs'
 import { spawn } from 'child_process'
-import { SessionManager } from './sessions.js'
+import { writeFileSync } from 'fs'
+import { SessionManager, expandTilde } from './sessions.js'
 import { startIngestServer, type IngestServer } from './ingest.js'
+import { BrowserManager } from './browser.js'
+import { startBrowserRpc, type BrowserRpcServer } from './browser-rpc.js'
+import { gitStatus, gitPush, gitPull } from './git.js'
 import { initStore, getFlag, setFlag, getWorkspaces, saveWorkspaces } from './store.js'
 import { hookStatus, installHooks, uninstallHooks } from './hooks-install.js'
+import { initUpdater } from './updater.js'
 import {
   isTmuxAvailable,
   listCockpitSessions,
@@ -17,22 +22,59 @@ import type { HookEvent, Workspace, AppSettings } from '../shared/types.js'
 
 /** Fixed ingest port so a persistent tmux dev session can reach us after restarts. */
 const INGEST_PORT = 47615
+/** Fixed browser-RPC port so a session's frozen MCP env keeps reaching us after restarts. */
+const BROWSER_RPC_PORT = 47616
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-/** Project root (out/main/index.js -> ../..). Also where the app's own repo lives in dev. */
+/** Project root (out/main/index.js -> ../..). In dev this is the repo; packaged it's the bundle. */
 const APP_ROOT = join(__dirname, '..', '..')
 const ICON_PNG = join(APP_ROOT, 'build', 'icon.png')
+
+/**
+ * The source checkout to edit/build from. Baked in at build time (`__REPO_ROOT__`)
+ * so the packaged Desktop app still opens its dev session in the real repo — and
+ * `npm run update-app` can rebuild from there. Falls back to APP_ROOT if the baked
+ * path no longer exists (e.g. the repo was moved/deleted after building).
+ */
+const REPO_ROOT = existsSync(join(__REPO_ROOT__, 'package.json')) ? __REPO_ROOT__ : APP_ROOT
 
 let mainWindow: BrowserWindow | null = null
 let manager: SessionManager
 let ingest: IngestServer
+let browserMgr: BrowserManager
+let browserRpc: BrowserRpcServer
 /** Set true only on the launch where we auto-installed hooks (for the one-time notice). */
 let hooksJustInstalled = false
 
 /** Absolute path to the hook emitter script (dev: repo/hooks, prod: resources). */
 function emitScriptPath(): string {
-  // out/main/index.js -> ../../hooks/emit.mjs in dev; packaged apps should ship hooks/ alongside.
+  // Packaged: hooks/ is shipped as an extraResource next to the asar, so Claude
+  // (an external process) can run emit.mjs — it can't execute from inside app.asar.
+  if (app.isPackaged) return join(process.resourcesPath, 'hooks', 'emit.mjs')
+  // Dev: out/main/index.js -> ../../hooks/emit.mjs in the repo.
   return join(__dirname, '..', '..', 'hooks', 'emit.mjs')
+}
+
+/** Absolute path to the embedded-browser MCP shim (dev: repo/mcp, prod: resources). */
+function browserMcpScriptPath(): string {
+  if (app.isPackaged) return join(process.resourcesPath, 'mcp', 'cockpit-browser.mjs')
+  return join(__dirname, '..', '..', 'mcp', 'cockpit-browser.mjs')
+}
+
+/**
+ * Write (once per launch) the `--mcp-config` file that registers the
+ * cockpit-browser MCP server for normal sessions, and return its path. The shim
+ * learns its pane id + RPC port from inherited pty env, so this config is shared.
+ */
+function writeBrowserMcpConfig(): string {
+  const cfg = {
+    mcpServers: {
+      'cockpit-browser': { command: 'node', args: [browserMcpScriptPath()] }
+    }
+  }
+  const path = join(app.getPath('userData'), 'cockpit-browser.mcp.json')
+  writeFileSync(path, JSON.stringify(cfg, null, 2))
+  return path
 }
 
 /** True for MCP tools that drive a browser (claude-in-chrome and friends). */
@@ -122,7 +164,19 @@ async function bootstrap(): Promise<void> {
   }
 
   ingest = await startIngestServer(handleHookEvent, INGEST_PORT)
-  manager = new SessionManager(ingest.port)
+
+  // Embedded per-session browser: RPC endpoint the MCP shim calls, the manager
+  // that owns the WebContentsViews, and the shared --mcp-config we hand sessions.
+  browserMgr = new BrowserManager()
+  browserRpc = await startBrowserRpc(browserMgr, BROWSER_RPC_PORT)
+  const browserMcpConfig = writeBrowserMcpConfig()
+
+  manager = new SessionManager(ingest.port, {
+    mcpConfig: browserMcpConfig,
+    port: browserRpc.port,
+    getTabs: (paneId) => browserMgr.listTabs(paneId).map((t) => ({ url: t.url, active: t.active })),
+    restoreTabs: (paneId, tabs) => void browserMgr.restoreTabs(paneId, tabs)
+  })
 
   manager.on('data', (paneId: string, chunk: string) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -130,11 +184,24 @@ async function bootstrap(): Promise<void> {
     }
   })
   manager.on('sessions', broadcastSessions)
+  manager.on('closed', (paneId: string) => browserMgr.disposePane(paneId))
+  browserMgr.on('tabs', (paneId: string, tabs: unknown) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('browser:tabs', paneId, tabs)
+    }
+    // Tab opened/closed/navigated → re-persist so a restart restores them.
+    manager?.persistNow()
+  })
 
   // ---- IPC ----
   ipcMain.handle('sessions:list', () => manager.list())
   ipcMain.handle('sessions:create', (_e, opts) => createSession(opts))
   ipcMain.handle('sessions:close', (_e, id: string) => manager.close(id))
+  ipcMain.handle('sessions:close-all', () => {
+    manager.closeAll()
+    killAllCockpitSessions() // sweep any tmux the dev session left behind
+    return listCockpitSessions()
+  })
   ipcMain.handle('sessions:rename', (_e, id: string, name: string) => manager.rename(id, name))
   ipcMain.handle('pty:attach', (_e, id: string) => manager.getBuffer(id))
   ipcMain.on('pty:write', (_e, id: string, data: string) => manager.write(id, data))
@@ -153,6 +220,32 @@ async function bootstrap(): Promise<void> {
     killCockpitSession(name)
     return listCockpitSessions()
   })
+  // ---- embedded browser IPC ----
+  ipcMain.handle('browser:list', (_e, paneId: string) => browserMgr.listTabs(paneId))
+  ipcMain.handle('browser:open', (_e, paneId: string, url?: string) => browserMgr.openTab(paneId, url))
+  ipcMain.handle('browser:close', (_e, paneId: string, tabId: string) =>
+    browserMgr.closeTab(paneId, tabId)
+  )
+  ipcMain.handle('browser:activate', (_e, paneId: string, tabId: string) =>
+    browserMgr.activateTab(paneId, tabId)
+  )
+  ipcMain.handle('browser:navigate', (_e, paneId: string, tabId: string | null, url: string) =>
+    browserMgr.navigate(paneId, tabId, url)
+  )
+  ipcMain.on('browser:set-bounds', (_e, paneId: string, bounds) =>
+    browserMgr.setBounds(paneId, bounds)
+  )
+  ipcMain.on('browser:set-visible', (_e, paneId: string, visible: boolean) =>
+    browserMgr.setVisible(paneId, visible)
+  )
+
+  // ---- git (workspace push/pull) ----
+  ipcMain.handle('git:status', (_e, dir: string, fetch?: boolean) =>
+    gitStatus(expandTilde(dir), fetch)
+  )
+  ipcMain.handle('git:push', (_e, dir: string) => gitPush(expandTilde(dir)))
+  ipcMain.handle('git:pull', (_e, dir: string) => gitPull(expandTilde(dir)))
+
   ipcMain.handle('settings:get', () => getSettings())
   ipcMain.handle('settings:update', (_e, patch: Partial<AppSettings>) => updateSettings(patch))
   ipcMain.handle('dialog:pick-folder', () => pickFolder())
@@ -160,8 +253,18 @@ async function bootstrap(): Promise<void> {
   ipcMain.handle('workspaces:save', (_e, ws: Workspace) => upsertWorkspace(ws))
   ipcMain.handle('workspaces:remove', (_e, id: string) => removeWorkspace(id))
 
+  // Auto-update wiring (no-op outside a packaged build).
+  initUpdater(() => mainWindow)
+
   // Restore panes from the previous run (resumes Claude conversations where possible).
   manager.restore()
+
+  // Always keep a Cockpit Dev session open (when running in the app's own repo).
+  const devAvailable =
+    existsSync(join(REPO_ROOT, 'package.json')) && existsSync(join(REPO_ROOT, 'src'))
+  if (devAvailable && !manager.list().some((s) => s.kind === 'dev')) {
+    createDevSession()
+  }
 }
 
 function getSettings(): AppSettings {
@@ -175,14 +278,21 @@ function updateSettings(patch: Partial<AppSettings>): AppSettings {
 
 /** Info about the app's own repo + runtime. */
 function appInfo(): {
+  version: string
   repoRoot: string
   devAvailable: boolean
   isDev: boolean
   hooksJustInstalled: boolean
 } {
   const devAvailable =
-    existsSync(join(APP_ROOT, 'package.json')) && existsSync(join(APP_ROOT, 'src'))
-  return { repoRoot: APP_ROOT, devAvailable, isDev: !app.isPackaged, hooksJustInstalled }
+    existsSync(join(REPO_ROOT, 'package.json')) && existsSync(join(REPO_ROOT, 'src'))
+  return {
+    version: app.getVersion(),
+    repoRoot: REPO_ROOT,
+    devAvailable,
+    isDev: !app.isPackaged,
+    hooksJustInstalled
+  }
 }
 
 /** Resolve cwd + default options from a workspace (if any) and spawn a session. */
@@ -208,7 +318,7 @@ function createSession(opts?: {
 /** The special "work on claude-cockpit itself" session, opened in the app's repo. */
 function createDevSession(): ReturnType<SessionManager['create']> {
   return manager.create({
-    cwd: APP_ROOT,
+    cwd: REPO_ROOT,
     command: 'claude',
     name: 'Cockpit Dev',
     kind: 'dev',
@@ -228,6 +338,8 @@ async function pickFolder(): Promise<string | null> {
 
 /** Create or update a workspace (upsert by id); returns the full list. */
 function upsertWorkspace(ws: Workspace): Workspace[] {
+  // Normalize a hand-typed `~/...` path so sessions spawn in a real dir.
+  ws = { ...ws, path: expandTilde(ws.path) }
   const list = getWorkspaces()
   const i = list.findIndex((w) => w.id === ws.id)
   if (i === -1) list.push(ws)
@@ -245,7 +357,7 @@ function removeWorkspace(id: string): Workspace[] {
 
 function runBuild(): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn('npm', ['run', 'build'], { cwd: APP_ROOT, stdio: 'ignore' })
+    const child = spawn('npm', ['run', 'build'], { cwd: REPO_ROOT, stdio: 'ignore' })
     child.on('error', reject)
     child.on('exit', (code) =>
       code === 0 ? resolve() : reject(new Error(`build exited ${code}`))
@@ -290,6 +402,9 @@ function createWindow(): void {
       contextIsolation: true
     }
   })
+
+  // Embedded-browser WebContentsViews overlay this window.
+  browserMgr?.setWindow(mainWindow)
 
   const wc = mainWindow.webContents
   const devUrl = process.env.ELECTRON_RENDERER_URL
@@ -337,6 +452,7 @@ app.whenReady().then(async () => {
 app.on('window-all-closed', () => {
   manager?.disposeAll()
   ingest?.close()
+  browserRpc?.close()
   if (process.platform !== 'darwin') app.quit()
 })
 
@@ -346,4 +462,5 @@ app.on('before-quit', () => {
   if (getFlag('killTmuxOnQuit')) killAllCockpitSessions()
   manager?.disposeAll()
   ingest?.close()
+  browserRpc?.close()
 })

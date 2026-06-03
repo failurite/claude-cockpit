@@ -1,9 +1,11 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { CockpitApi, TerminalSession } from '../shared/types.js'
+import type { BrowserTab, CockpitApi, TerminalSession, UpdateStatus } from '../shared/types.js'
 
 // Fan-out of broadcast IPC events to per-pane / global subscribers in the renderer.
 const dataSubs = new Map<string, Set<(data: string) => void>>()
 const sessionSubs = new Set<(s: TerminalSession[]) => void>()
+const updateSubs = new Set<(s: UpdateStatus) => void>()
+const browserTabSubs = new Set<(paneId: string, tabs: BrowserTab[]) => void>()
 
 ipcRenderer.on('pty:data', (_e, paneId: string, data: string) => {
   dataSubs.get(paneId)?.forEach((cb) => cb(data))
@@ -11,12 +13,19 @@ ipcRenderer.on('pty:data', (_e, paneId: string, data: string) => {
 ipcRenderer.on('sessions:changed', (_e, sessions: TerminalSession[]) => {
   sessionSubs.forEach((cb) => cb(sessions))
 })
+ipcRenderer.on('updates:status', (_e, s: UpdateStatus) => {
+  updateSubs.forEach((cb) => cb(s))
+})
+ipcRenderer.on('browser:tabs', (_e, paneId: string, tabs: BrowserTab[]) => {
+  browserTabSubs.forEach((cb) => cb(paneId, tabs))
+})
 
 const api: CockpitApi = {
   listSessions: () => ipcRenderer.invoke('sessions:list'),
   createSession: (opts) => ipcRenderer.invoke('sessions:create', opts),
   createDevSession: () => ipcRenderer.invoke('sessions:create-dev'),
   closeSession: (id) => ipcRenderer.invoke('sessions:close', id),
+  closeAllSessions: () => ipcRenderer.invoke('sessions:close-all'),
   renameSession: (id, name) => ipcRenderer.invoke('sessions:rename', id, name),
   write: (id, data) => ipcRenderer.send('pty:write', id, data),
   resize: (id, cols, rows) => ipcRenderer.send('pty:resize', id, cols, rows),
@@ -49,9 +58,36 @@ const api: CockpitApi = {
     list: () => ipcRenderer.invoke('tmux:list'),
     kill: (name) => ipcRenderer.invoke('tmux:kill', name)
   },
+  browser: {
+    listTabs: (paneId) => ipcRenderer.invoke('browser:list', paneId),
+    openTab: (paneId, url) => ipcRenderer.invoke('browser:open', paneId, url),
+    closeTab: (paneId, tabId) => ipcRenderer.invoke('browser:close', paneId, tabId),
+    activateTab: (paneId, tabId) => ipcRenderer.invoke('browser:activate', paneId, tabId),
+    navigate: (paneId, tabId, url) => ipcRenderer.invoke('browser:navigate', paneId, tabId, url),
+    setBounds: (paneId, bounds) => ipcRenderer.send('browser:set-bounds', paneId, bounds),
+    setVisible: (paneId, visible) => ipcRenderer.send('browser:set-visible', paneId, visible),
+    onTabsChanged: (cb) => {
+      browserTabSubs.add(cb)
+      return () => browserTabSubs.delete(cb)
+    }
+  },
+  git: {
+    status: (dir, fetch) => ipcRenderer.invoke('git:status', dir, fetch),
+    push: (dir) => ipcRenderer.invoke('git:push', dir),
+    pull: (dir) => ipcRenderer.invoke('git:pull', dir)
+  },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
     update: (patch) => ipcRenderer.invoke('settings:update', patch)
+  },
+  updates: {
+    status: () => ipcRenderer.invoke('updates:status'),
+    check: () => ipcRenderer.invoke('updates:check'),
+    install: () => ipcRenderer.invoke('updates:install'),
+    onStatus: (cb) => {
+      updateSubs.add(cb)
+      return () => updateSubs.delete(cb)
+    }
   }
 }
 

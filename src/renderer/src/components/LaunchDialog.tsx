@@ -22,7 +22,7 @@ interface Props {
 function previewCommand(o: SessionOptions): string {
   const parts = ['claude']
   if (o.dangerouslySkipPermissions) parts.push('--dangerously-skip-permissions')
-  if (o.chrome) parts.push('--chrome')
+  if (o.chrome) parts.push(o.externalChrome ? '--chrome' : '--mcp-config <cockpit-browser>')
   if (o.extraArgs.trim()) parts.push(o.extraArgs.trim())
   return parts.join(' ')
 }
@@ -107,8 +107,17 @@ export function LaunchDialog({
               checked={options.chrome}
               onChange={(e) => set('chrome', e.target.checked)}
             />
+            <span>Enable browser (embedded, in-Cockpit)</span>
+          </label>
+          <label className="check" style={{ marginLeft: 22, opacity: options.chrome ? 1 : 0.4 }}>
+            <input
+              type="checkbox"
+              disabled={!options.chrome}
+              checked={options.externalChrome}
+              onChange={(e) => set('externalChrome', e.target.checked)}
+            />
             <span>
-              Drive Chrome <code>--chrome</code>
+              Use external Chrome instead <code>--chrome</code>
             </span>
           </label>
           <label className="field" style={{ marginTop: 8 }}>

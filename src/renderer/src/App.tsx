@@ -8,6 +8,7 @@ import type {
 import { DEFAULT_SESSION_OPTIONS } from '../../shared/types'
 import { Sidebar } from './components/Sidebar'
 import { TerminalView } from './components/TerminalView'
+import { BrowserPanel } from './components/BrowserPanel'
 import { LaunchDialog, type LaunchValues } from './components/LaunchDialog'
 import { SettingsPanel } from './components/SettingsPanel'
 
@@ -25,6 +26,8 @@ export default function App(): JSX.Element {
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null)
   const [dialog, setDialog] = useState<Dialog | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  // Which panes currently show their embedded browser (auto-opens on first tab).
+  const [browserOpen, setBrowserOpen] = useState<Record<string, boolean>>({})
 
   // Initial load + live updates.
   useEffect(() => {
@@ -51,17 +54,18 @@ export default function App(): JSX.Element {
     }
   }, [sessions, activeId])
 
+  // Auto-reveal a pane's browser the moment the agent opens its first tab.
+  useEffect(() => {
+    const off = window.cockpit.browser.onTabsChanged((paneId, tabs) => {
+      if (tabs.length > 0) setBrowserOpen((m) => (m[paneId] ? m : { ...m, [paneId]: true }))
+    })
+    return off
+  }, [])
+
   const newSession = useCallback(async (workspaceId: string) => {
     const s = await window.cockpit.createSession({ workspaceId })
     setActiveId(s.id)
   }, [])
-
-  const createDevSession = useCallback(async () => {
-    const existing = sessions.find((s) => s.kind === 'dev')
-    if (existing) return setActiveId(existing.id)
-    const s = await window.cockpit.createDevSession()
-    setActiveId(s.id)
-  }, [sessions])
 
   const closeSession = useCallback((id: string) => window.cockpit.closeSession(id), [])
   const renameSession = useCallback(
@@ -158,34 +162,44 @@ export default function App(): JSX.Element {
         onNewWorkspace={() => setDialog({ kind: 'workspace-new' })}
         onEditWorkspace={(ws) => setDialog({ kind: 'workspace-edit', ws })}
         onDeleteWorkspace={deleteWorkspace}
-        onCreateDev={appInfo?.devAvailable ? createDevSession : undefined}
         onOpenSettings={() => setSettingsOpen(true)}
       />
       <main className="stage">
-        <div className="terminals">
-          {sessions.length === 0 && (
-            <div className="empty">
-              <h1>claude-cockpit</h1>
-              <p>No sessions yet. Create a workspace to get started.</p>
-              <div className="empty-actions">
-                <button onClick={() => setDialog({ kind: 'workspace-new' })}>+ New workspace</button>
-                {appInfo?.devAvailable && (
-                  <button className="ghost" onClick={createDevSession}>
-                    🛠 Work on this app
-                  </button>
-                )}
+        <div className="work">
+          <div className="terminals">
+            {sessions.length === 0 && (
+              <div className="empty">
+                <h1>claude-cockpit</h1>
+                <p>No sessions yet. Create a workspace to get started.</p>
+                <div className="empty-actions">
+                  <button onClick={() => setDialog({ kind: 'workspace-new' })}>+ New workspace</button>
+                </div>
               </div>
-            </div>
+            )}
+            {sessions.map((s) => (
+              <TerminalView key={s.id} session={s} active={s.id === activeId} />
+            ))}
+          </div>
+          {active && browserOpen[active.id] && (
+            <BrowserPanel
+              key={active.id}
+              paneId={active.id}
+              onClose={() => setBrowserOpen((m) => ({ ...m, [active.id]: false }))}
+            />
           )}
-          {sessions.map((s) => (
-            <TerminalView key={s.id} session={s} active={s.id === activeId} />
-          ))}
         </div>
         {active && (
           <footer className="statusbar">
             <span className={`dot ${active.status}`} />
             <strong>{active.name}</strong>
             {active.kind === 'dev' && <span className="dev-tag">DEV</span>}
+            <button
+              className="browser-toggle"
+              onClick={() => setBrowserOpen((m) => ({ ...m, [active.id]: !m[active.id] }))}
+              title={browserOpen[active.id] ? 'Hide browser' : 'Show browser'}
+            >
+              🌐 {browserOpen[active.id] ? 'Hide' : 'Browser'}
+            </button>
             <span className="muted">{active.status}</span>
             <span className="muted">· {active.lastActivity}</span>
             {active.usingChrome && (

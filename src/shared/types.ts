@@ -12,16 +12,23 @@ export type SessionStatus =
 export interface SessionOptions {
   /** `--dangerously-skip-permissions` */
   dangerouslySkipPermissions: boolean
-  /** `--chrome` (drive Chrome via the claude-in-chrome MCP) */
+  /** Give the session a browser. Embedded (in-Cockpit) by default; see `externalChrome`. */
   chrome: boolean
+  /**
+   * Use real external Chrome (`--chrome` / claude-in-chrome) instead of Cockpit's
+   * embedded browser. Off by default — sessions are self-contained unless you
+   * opt into external Chrome via the advanced startup config.
+   */
+  externalChrome: boolean
   /** Extra raw args appended verbatim to the claude command (e.g. "--model opus"). */
   extraArgs: string
 }
 
-/** Baseline options for a brand-new workspace / session. */
+/** Baseline options for a brand-new workspace / session: browser on, embedded. */
 export const DEFAULT_SESSION_OPTIONS: SessionOptions = {
   dangerouslySkipPermissions: true,
   chrome: true,
+  externalChrome: false,
   extraArgs: ''
 }
 
@@ -70,6 +77,48 @@ export interface TerminalSession {
   updatedAt: number
 }
 
+/** Git state of a workspace directory, for the sidebar push/pull UI. */
+export interface GitStatus {
+  /** False if the directory isn't a git work tree. */
+  isRepo: boolean
+  /** Current branch (or null if detached/unknown). */
+  branch: string | null
+  /** Tracking branch, e.g. "origin/main" (null if none configured). */
+  upstream: string | null
+  /** Commits ahead of upstream (unpushed). */
+  ahead: number
+  /** Commits behind upstream (unpulled — only fresh after a fetch). */
+  behind: number
+  /** True if there are uncommitted changes. */
+  dirty: boolean
+  /** origin's URL, if any. */
+  remoteUrl: string | null
+  /** Set if a git command failed unexpectedly. */
+  error?: string
+}
+
+/** One tab in a session's embedded browser (Cockpit-owned WebContentsView). */
+export interface BrowserTab {
+  /** Stable id for the tab within its pane. */
+  id: string
+  /** Current document title (or the URL until one loads). */
+  title: string
+  /** Current URL. */
+  url: string
+  /** True while a navigation is in flight. */
+  loading: boolean
+  /** True if this is the pane's foreground tab. */
+  active: boolean
+}
+
+/** On-screen rectangle (CSS px, relative to the window content) for the browser overlay. */
+export interface BrowserBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 /** Event posted by a Claude Code hook to the local ingest server. */
 export interface HookEvent {
   hook_event_name: string
@@ -82,6 +131,28 @@ export interface HookEvent {
   // even before we know Claude's session_id.
   cockpit_pane_id?: string
   [k: string]: unknown
+}
+
+/** Lifecycle of an auto-update check/download (electron-updater). */
+export type UpdateState =
+  | 'idle' // nothing happening yet
+  | 'checking' // querying the feed
+  | 'available' // a newer version exists (downloading begins automatically)
+  | 'not-available' // already up to date
+  | 'downloading' // pulling the update (see `percent`)
+  | 'downloaded' // ready to install on restart
+  | 'error' // the check/download failed (see `message`)
+  | 'unsupported' // dev build or unsigned app — auto-update can't run here
+
+/** Current auto-update status, broadcast to the renderer as it changes. */
+export interface UpdateStatus {
+  state: UpdateState
+  /** The available/downloaded version, when known. */
+  version: string | null
+  /** Download progress 0–100 while `state === 'downloading'`. */
+  percent: number | null
+  /** Human-readable detail (error text, or why it's unsupported). */
+  message: string | null
 }
 
 /** The API surface exposed to the renderer via the preload bridge. */
@@ -112,6 +183,8 @@ export interface CockpitApi {
     remove(id: string): Promise<Workspace[]>
   }
   closeSession(id: string): Promise<void>
+  /** Close every session (kills all ptys) and kill all cockpit tmux; returns remaining tmux names. */
+  closeAllSessions(): Promise<string[]>
   renameSession(id: string, name: string): Promise<void>
   /** Send user keystrokes/data into a pty. */
   write(id: string, data: string): void
@@ -142,10 +215,47 @@ export interface CockpitApi {
     /** Kill one cockpit tmux session by name; returns the remaining list. */
     kill(name: string): Promise<string[]>
   }
+  /** Per-session embedded browser (replaces external Chrome for normal sessions). */
+  browser: {
+    /** Tabs currently open in a pane's browser. */
+    listTabs(paneId: string): Promise<BrowserTab[]>
+    /** Open a new tab (optionally at a URL) and make it active; returns the tab. */
+    openTab(paneId: string, url?: string): Promise<BrowserTab>
+    /** Close a tab; returns the remaining tabs. */
+    closeTab(paneId: string, tabId: string): Promise<BrowserTab[]>
+    /** Make a tab the foreground tab for its pane. */
+    activateTab(paneId: string, tabId: string): Promise<BrowserTab[]>
+    /** Navigate a tab (defaults to the active tab) to a URL. */
+    navigate(paneId: string, tabId: string, url: string): Promise<void>
+    /** Report where the active tab should render for a pane (null = nowhere). */
+    setBounds(paneId: string, bounds: BrowserBounds | null): void
+    /** Show or hide a pane's browser overlay (only one pane is foreground at a time). */
+    setVisible(paneId: string, visible: boolean): void
+    /** Subscribe to tab-list changes for any pane. Returns an unsubscribe fn. */
+    onTabsChanged(cb: (paneId: string, tabs: BrowserTab[]) => void): () => void
+  }
+  /** Git status + push/pull for a workspace directory. */
+  git: {
+    /** Snapshot a directory's git state. `fetch` updates the unpulled count (network). */
+    status(dir: string, fetch?: boolean): Promise<GitStatus>
+    push(dir: string): Promise<{ ok: boolean; message: string }>
+    pull(dir: string): Promise<{ ok: boolean; message: string }>
+  }
   /** App-wide settings. */
   settings: {
     get(): Promise<AppSettings>
     update(patch: Partial<AppSettings>): Promise<AppSettings>
+  }
+  /** Auto-update (electron-updater) against the GitHub Releases feed. */
+  updates: {
+    /** The latest known status (no network call). */
+    status(): Promise<UpdateStatus>
+    /** Trigger a check now; resolves with the resulting status. */
+    check(): Promise<UpdateStatus>
+    /** Quit and install a downloaded update (only valid when state === 'downloaded'). */
+    install(): Promise<void>
+    /** Subscribe to status changes. Returns an unsubscribe fn. */
+    onStatus(cb: (s: UpdateStatus) => void): () => void
   }
 }
 
@@ -155,6 +265,8 @@ export interface AppSettings {
 }
 
 export interface AppInfo {
+  /** The app's own version (from package.json), shown in Settings. */
+  version: string
   /** Absolute path to the claude-cockpit repo (where the dev session opens). */
   repoRoot: string
   /** True if that path looks like the app's source checkout (has package.json + src). */

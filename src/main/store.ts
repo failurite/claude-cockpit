@@ -15,6 +15,8 @@ export interface PersistedSession {
   workspaceId: string | null
   /** Launch options, so the claude command is rebuilt identically on restore. */
   options: SessionOptions
+  /** Embedded-browser tabs (URLs) to reopen on restore; logins persist via the profile. */
+  browserTabs?: { url: string; active: boolean }[]
 }
 
 /**

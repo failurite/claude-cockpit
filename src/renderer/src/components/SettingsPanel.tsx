@@ -1,5 +1,27 @@
 import { useEffect, useState } from 'react'
-import type { AppInfo, AppSettings, HookInstallState } from '../../../shared/types'
+import type { AppInfo, AppSettings, HookInstallState, UpdateStatus } from '../../../shared/types'
+
+/** One-line summary of the current update status for the Settings UI. */
+function updateLabel(s: UpdateStatus): string {
+  switch (s.state) {
+    case 'checking':
+      return 'Checking for updates…'
+    case 'available':
+      return `Update ${s.version ?? ''} found — downloading…`
+    case 'downloading':
+      return `Downloading… ${s.percent ?? 0}%`
+    case 'downloaded':
+      return `Update ${s.version ?? ''} ready — restart to install.`
+    case 'not-available':
+      return 'You’re on the latest version.'
+    case 'error':
+      return `Update error: ${s.message ?? 'unknown'}`
+    case 'unsupported':
+      return s.message ?? 'Auto-update is unavailable in this build.'
+    default:
+      return ''
+  }
+}
 
 interface Props {
   hooks: HookInstallState | null
@@ -23,11 +45,14 @@ export function SettingsPanel({
   const [tmuxAvailable, setTmuxAvailable] = useState<boolean | null>(null)
   const [tmuxSessions, setTmuxSessions] = useState<string[]>([])
   const [settings, setSettings] = useState<AppSettings | null>(null)
+  const [update, setUpdate] = useState<UpdateStatus | null>(null)
 
   useEffect(() => {
     window.cockpit.tmux.available().then(setTmuxAvailable)
     window.cockpit.tmux.list().then(setTmuxSessions)
     window.cockpit.settings.get().then(setSettings)
+    window.cockpit.updates.status().then(setUpdate)
+    return window.cockpit.updates.onStatus(setUpdate)
   }, [])
 
   const relaunch = async (rebuild: boolean): Promise<void> => {
@@ -40,6 +65,14 @@ export function SettingsPanel({
   }
   const toggleKillOnQuit = async (value: boolean): Promise<void> => {
     setSettings(await window.cockpit.settings.update({ killTmuxOnQuit: value }))
+  }
+  const checkForUpdates = async (): Promise<void> => {
+    setUpdate(await window.cockpit.updates.check())
+  }
+  const closeAllSessions = async (): Promise<void> => {
+    if (!window.confirm('Close ALL sessions and kill cockpit tmux sessions? This cannot be undone.'))
+      return
+    setTmuxSessions(await window.cockpit.closeAllSessions())
   }
 
   return (
@@ -66,6 +99,17 @@ export function SettingsPanel({
               Install status hooks
             </button>
           )}
+        </div>
+
+        <div className="field">
+          <span>Sessions</span>
+          <p className="settings-note">
+            Close every session at once and sweep any lingering cockpit-owned tmux sessions — a
+            clean slate with nothing left running in the background.
+          </p>
+          <button className="btn danger" onClick={closeAllSessions}>
+            Close all sessions
+          </button>
         </div>
 
         <div className="field">
@@ -121,8 +165,33 @@ export function SettingsPanel({
           {relaunchMsg && <p className="settings-note">{relaunchMsg}</p>}
           {appInfo && (
             <p className="settings-note mono">
-              {appInfo.isDev ? 'dev' : 'packaged'} · {appInfo.repoRoot}
+              v{appInfo.version} · {appInfo.isDev ? 'dev' : 'packaged'} · {appInfo.repoRoot}
             </p>
+          )}
+        </div>
+
+        <div className="field">
+          <span>Updates</span>
+          <p className="settings-note">
+            Cockpit auto-updates from GitHub Releases in the background. Updates apply on the next
+            launch, or restart now when one is ready. (Requires a signed, packaged build.)
+          </p>
+          <div className="field-row">
+            <button
+              className="btn"
+              onClick={checkForUpdates}
+              disabled={update?.state === 'unsupported' || update?.state === 'checking'}
+            >
+              Check for updates
+            </button>
+            {update?.state === 'downloaded' && (
+              <button className="btn primary" onClick={() => window.cockpit.updates.install()}>
+                Restart &amp; install
+              </button>
+            )}
+          </div>
+          {update && updateLabel(update) && (
+            <p className="settings-note">{updateLabel(update)}</p>
           )}
         </div>
 

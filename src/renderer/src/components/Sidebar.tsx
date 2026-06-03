@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { SessionStatus, TerminalSession, Workspace } from '../../../shared/types'
+import { WorkspaceGit } from './WorkspaceGit'
 
 const STATUS_LABEL: Record<SessionStatus, string> = {
   starting: 'starting…',
@@ -24,8 +25,6 @@ interface Props {
   onNewWorkspace: () => void
   onEditWorkspace: (ws: Workspace) => void
   onDeleteWorkspace: (id: string) => void
-  /** Provided only when the app's own repo is available (dev session). */
-  onCreateDev?: () => void
   onOpenSettings: () => void
 }
 
@@ -41,7 +40,6 @@ export function Sidebar({
   onNewWorkspace,
   onEditWorkspace,
   onDeleteWorkspace,
-  onCreateDev,
   onOpenSettings
 }: Props): JSX.Element {
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -206,6 +204,7 @@ export function Sidebar({
                   )}
                 </div>
               </div>
+              {!isCollapsed && <WorkspaceGit path={ws.path} />}
               {!isCollapsed && (
                 <ul className="session-list">
                   {items.length ? (
@@ -225,6 +224,8 @@ export function Sidebar({
               <span className="ws-chevron-spacer" />
               <span className="ws-name muted">Other</span>
             </div>
+            {/* The dev session's cwd is the cockpit repo — show its git status too. */}
+            {dev[0] && <WorkspaceGit path={dev[0].cwd} />}
             <ul className="session-list">{[...dev, ...ungrouped].map(renderItem)}</ul>
           </div>
         )}
@@ -234,11 +235,6 @@ export function Sidebar({
         <button className="ghost-btn" onClick={onNewWorkspace}>
           + New workspace
         </button>
-        {onCreateDev && (
-          <button className="ghost-btn" onClick={onCreateDev} title="Open Claude in this app's repo">
-            🛠 Work on this app
-          </button>
-        )}
       </div>
     </aside>
   )

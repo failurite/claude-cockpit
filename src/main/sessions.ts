@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events'
 import { homedir } from 'os'
+import { join } from 'path'
 import pty from '@homebridge/node-pty-prebuilt-multiarch'
 import type { IPty } from '@homebridge/node-pty-prebuilt-multiarch'
 import type { SessionOptions, SessionStatus, TerminalSession } from '../shared/types.js'
@@ -12,7 +13,7 @@ import {
   type PersistedSession
 } from './store.js'
 import { watchTranscriptForSession } from './transcripts.js'
-import { isTmuxAvailable, devLaunchCommand, DEV_TMUX_NAME } from './tmux.js'
+import { isTmuxAvailable, devLaunchCommand, enableMouse, DEV_TMUX_NAME } from './tmux.js'
 
 /** Cap on retained pty output for replay when a terminal view (re)mounts. */
 const MAX_BUFFER = 200_000
@@ -28,11 +29,33 @@ interface Pane {
 
 let seq = 0
 
-/** Map session options to `claude` CLI flags (order is stable for readability). */
-function claudeFlags(options: SessionOptions): string[] {
+/**
+ * Expand a leading `~` to the user's home dir. The OS never expands tilde, so a
+ * cwd like `~/code/house` (e.g. a workspace path typed by hand) would make
+ * `pty.spawn` fail to start and the pane would exit instantly. Resolve it here,
+ * the single choke point every session passes through.
+ */
+export function expandTilde(p: string): string {
+  if (p === '~') return homedir()
+  if (p.startsWith('~/')) return join(homedir(), p.slice(2))
+  return p
+}
+
+/**
+ * Map session options to `claude` CLI flags (order is stable for readability).
+ * When `browserMcpConfig` is given, the "chrome" option wires Cockpit's embedded
+ * browser (a per-session MCP server) instead of `--chrome` (external Chrome).
+ */
+function claudeFlags(options: SessionOptions, browserMcpConfig?: string | null): string[] {
   const flags: string[] = []
   if (options.dangerouslySkipPermissions) flags.push('--dangerously-skip-permissions')
-  if (options.chrome) flags.push('--chrome')
+  if (options.chrome) {
+    // Embedded by default; only use external Chrome when explicitly opted in (or
+    // if no embedded config is available as a fallback). JSON.stringify quotes the
+    // path so spaces (e.g. "Application Support") survive the shell `exec`.
+    if (!options.externalChrome && browserMcpConfig) flags.push('--mcp-config', JSON.stringify(browserMcpConfig))
+    else flags.push('--chrome')
+  }
   const extra = options.extraArgs.trim()
   if (extra) flags.push(extra)
   return flags
@@ -48,7 +71,22 @@ export class SessionManager extends EventEmitter {
   /** claudeSessionId -> paneId, so hooks/transcripts that only know Claude's id can map back. */
   private claudeIndex = new Map<string, string>()
 
-  constructor(private ingestPort: number) {
+  /**
+   * @param ingestPort port the status hooks POST to.
+   * @param browser embedded-browser wiring for normal sessions: the generated
+   *   `--mcp-config` path and the RPC port the MCP shim reaches (env-injected).
+   */
+  constructor(
+    private ingestPort: number,
+    private browser: {
+      mcpConfig: string | null
+      port: number
+      /** Snapshot a pane's embedded-browser tabs for persistence. */
+      getTabs?: (paneId: string) => { url: string; active: boolean }[]
+      /** Reopen a restored pane's embedded-browser tabs. */
+      restoreTabs?: (paneId: string, tabs: { url: string; active: boolean }[]) => void
+    } = { mcpConfig: null, port: 0 }
+  ) {
     super()
   }
 
@@ -69,15 +107,24 @@ export class SessionManager extends EventEmitter {
       kind: p.session.kind,
       claudeSessionId: p.session.claudeSessionId,
       workspaceId: p.session.workspaceId,
-      options: p.session.options
+      options: p.session.options,
+      // Drop blank tabs so we don't restore empty about:blank panes.
+      browserTabs: (this.browser.getTabs?.(p.session.id) ?? []).filter(
+        (t) => t.url && t.url !== 'about:blank'
+      )
     }))
     saveSessions(sessions)
+  }
+
+  /** Re-persist now (e.g. when embedded-browser tabs change, which we don't otherwise observe). */
+  persistNow(): void {
+    this.persist()
   }
 
   /** Recreate panes saved from a previous run (called once at startup). */
   restore(): void {
     for (const s of getSavedSessions()) {
-      this.create({
+      const session = this.create({
         cwd: s.cwd,
         command: s.command,
         name: s.name,
@@ -86,6 +133,8 @@ export class SessionManager extends EventEmitter {
         options: s.options,
         resumeId: s.claudeSessionId
       })
+      // Reopen this pane's embedded-browser tabs (cookies/logins persist via the profile).
+      if (s.browserTabs?.length) this.browser.restoreTabs?.(session.id, s.browserTabs)
     }
   }
 
@@ -99,7 +148,7 @@ export class SessionManager extends EventEmitter {
     /** If set (and command is claude), launch `claude … --resume <id>` to restore a conversation. */
     resumeId?: string | null
   }): TerminalSession {
-    const cwd = opts?.cwd || homedir()
+    const cwd = expandTilde(opts?.cwd || homedir())
     const command = opts?.command || 'claude'
     const kind = opts?.kind || 'normal'
     const options: SessionOptions = { ...DEFAULT_SESSION_OPTIONS, ...opts?.options }
@@ -120,12 +169,13 @@ export class SessionManager extends EventEmitter {
     let launch: string
     if (tmuxDev) {
       // attach-or-create the persistent dev session; tmux keeps claude alive.
-      launch = devLaunchCommand(cwd)
+      // Flags (e.g. --dangerously-skip-permissions --chrome) apply on first create.
+      launch = devLaunchCommand(cwd, claudeFlags(options))
     } else {
       // Build `claude <flags> [--resume <id>]`. Non-claude commands launch verbatim.
       const parts =
         command === 'claude'
-          ? ['claude', ...claudeFlags(options), ...(opts?.resumeId ? ['--resume', opts.resumeId] : [])]
+          ? ['claude', ...claudeFlags(options, this.browser.mcpConfig), ...(opts?.resumeId ? ['--resume', opts.resumeId] : [])]
           : [command]
       launch = parts.join(' ')
     }
@@ -144,7 +194,10 @@ export class SessionManager extends EventEmitter {
         ...process.env,
         CLAUDE_COCKPIT: '1',
         CLAUDE_COCKPIT_PANE_ID: id,
-        CLAUDE_COCKPIT_INGEST_PORT: String(this.ingestPort)
+        CLAUDE_COCKPIT_INGEST_PORT: String(this.ingestPort),
+        // The cockpit-browser MCP shim (spawned by claude) inherits this to reach
+        // the app's browser RPC endpoint, scoped to this pane.
+        CLAUDE_COCKPIT_BROWSER_PORT: String(this.browser.port)
       } as Record<string, string>
     })
 
@@ -167,6 +220,13 @@ export class SessionManager extends EventEmitter {
     }
     const pane: Pane = { session, proc, buffer: '' }
     this.panes.set(id, pane)
+
+    // Scrolling fix: tmux without mouse mode turns trackpad wheel into arrow keys
+    // for alt-screen apps. Set it once the session exists (retry covers first create).
+    if (tmuxDev) {
+      setTimeout(() => enableMouse(DEV_TMUX_NAME), 1000)
+      setTimeout(() => enableMouse(DEV_TMUX_NAME), 4000)
+    }
 
     proc.onData((chunk) => {
       pane.buffer += chunk
@@ -222,8 +282,14 @@ export class SessionManager extends EventEmitter {
     }
     if (p.session.claudeSessionId) this.claudeIndex.delete(p.session.claudeSessionId)
     this.panes.delete(id)
+    this.emit('closed', id) // let the BrowserManager tear down this pane's tabs
     this.emitSessions()
     this.persist()
+  }
+
+  /** Close every pane (kills ptys, clears persisted state). tmux is killed by the caller. */
+  closeAll(): void {
+    for (const id of [...this.panes.keys()]) this.close(id)
   }
 
   /** Apply a partial update to a pane's session and broadcast. */

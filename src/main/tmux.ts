@@ -32,11 +32,29 @@ function sq(s: string): string {
 
 /**
  * The shell command that attaches to the persistent dev tmux session, creating it
- * (running `claude`) if it doesn't exist. `-A` = attach-if-exists. Because the tmux
- * *server* outlives cockpit, claude survives app restarts; we just re-attach.
+ * (running `claude <flags>`) if it doesn't exist. `-A` = attach-if-exists. Because
+ * the tmux *server* outlives cockpit, claude survives app restarts; we just re-attach.
+ * NB: flags only apply when the session is first created — re-attach ignores them.
  */
-export function devLaunchCommand(cwd: string): string {
-  return `tmux new-session -A -s ${DEV_TMUX_NAME} -c ${sq(cwd)} claude`
+export function devLaunchCommand(cwd: string, claudeArgs: string[] = []): string {
+  const cmd = ['claude', ...claudeArgs].join(' ').trim()
+  return `tmux new-session -A -s ${DEV_TMUX_NAME} -c ${sq(cwd)} ${cmd}`
+}
+
+/**
+ * Turn on tmux mouse mode for one cockpit session (session-scoped — never `-g`,
+ * so the user's own tmux sessions are untouched). Without it, tmux translates
+ * trackpad wheel into Up/Down arrows for alt-screen apps, which makes scrolling
+ * in a Claude pane cycle prompt history instead of scrolling the transcript.
+ */
+export function enableMouse(name: string): void {
+  const bin = tmuxBin()
+  if (!bin || !name.startsWith(TMUX_PREFIX)) return
+  try {
+    execFileSync(bin, ['set-option', '-t', name, 'mouse', 'on'], { stdio: 'ignore' })
+  } catch {
+    /* session not up yet — caller retries */
+  }
 }
 
 /** Names of currently-live cockpit-owned tmux sessions (empty if no server). */

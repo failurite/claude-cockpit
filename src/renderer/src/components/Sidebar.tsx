@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { SessionStatus, TerminalSession, Workspace } from '../../../shared/types'
+import { COCKPIT_WORKSPACE_ID } from '../../../shared/types'
 import { WorkspaceGit } from './WorkspaceGit'
 import { WorkspaceIssues } from './WorkspaceIssues'
 
@@ -66,8 +67,8 @@ export function Sidebar({
       return next
     })
 
-  const ungrouped = sessions.filter((s) => s.kind !== 'dev' && !s.workspaceId)
-  const dev = sessions.filter((s) => s.kind === 'dev')
+  // Sessions whose workspace isn't shown (ad-hoc, or the Cockpit workspace when hidden).
+  const ungrouped = sessions.filter((s) => !workspaces.some((w) => w.id === s.workspaceId))
 
   const renderItem = (s: TerminalSession): JSX.Element => (
     <li
@@ -191,23 +192,27 @@ export function Sidebar({
                         >
                           New session (custom settings…)
                         </button>
-                        <button
-                          onClick={() => {
-                            setMenuFor(null)
-                            onEditWorkspace(ws)
-                          }}
-                        >
-                          Edit workspace…
-                        </button>
-                        <button
-                          className="danger"
-                          onClick={() => {
-                            setMenuFor(null)
-                            onDeleteWorkspace(ws.id)
-                          }}
-                        >
-                          Remove workspace
-                        </button>
+                        {ws.id !== COCKPIT_WORKSPACE_ID && (
+                          <>
+                            <button
+                              onClick={() => {
+                                setMenuFor(null)
+                                onEditWorkspace(ws)
+                              }}
+                            >
+                              Edit workspace…
+                            </button>
+                            <button
+                              className="danger"
+                              onClick={() => {
+                                setMenuFor(null)
+                                onDeleteWorkspace(ws.id)
+                              }}
+                            >
+                              Remove workspace
+                            </button>
+                          </>
+                        )}
                       </div>
                     </>
                   )}
@@ -235,15 +240,13 @@ export function Sidebar({
           )
         })}
 
-        {(ungrouped.length > 0 || dev.length > 0) && (
+        {ungrouped.length > 0 && (
           <div className="ws-group">
             <div className="ws-header">
               <span className="ws-chevron-spacer" />
               <span className="ws-name muted">Other</span>
             </div>
-            {/* The dev session's cwd is the cockpit repo — show its git status too. */}
-            {dev[0] && <WorkspaceGit path={dev[0].cwd} />}
-            <ul className="session-list">{[...dev, ...ungrouped].map(renderItem)}</ul>
+            <ul className="session-list">{ungrouped.map(renderItem)}</ul>
           </div>
         )}
       </div>

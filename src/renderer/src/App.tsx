@@ -268,6 +268,7 @@ export default function App(): JSX.Element {
           onInstallHooks={installHooks}
           onUninstallHooks={uninstallHooks}
           onRelaunch={relaunch}
+          onRefreshWorkspaces={() => window.cockpit.workspaces.list().then(setWorkspaces)}
           onClose={() => setSettingsOpen(false)}
         />
       )}

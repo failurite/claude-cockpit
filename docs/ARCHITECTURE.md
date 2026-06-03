@@ -119,6 +119,10 @@ This is a heuristic and a good place to contribute a more exact implementation
   cwd, command, kind, options, Claude `session_id`, embedded-browser tab URLs) on
   each change; `restore()` respawns them on boot with `claude --resume <id>` and
   reopens their browser tabs.
+- **Cockpit workspace:** the app's own repo is a built-in workspace
+  (`COCKPIT_WORKSPACE_ID`), *synthesized* by `listAllWorkspaces()` rather than
+  stored — present by default, not editable/deletable, hidden via the
+  `hideCockpitWorkspace` setting. Dev-kind sessions are always grouped into it.
 - **Dev session:** `createDevSession()` opens in the app's own repo (baked in at
   build time via `__REPO_ROOT__`) and auto-opens on every launch. With tmux
   installed it runs inside a persistent `cockpit-dev` tmux session, so the real

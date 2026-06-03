@@ -29,6 +29,8 @@ interface Props {
   onInstallHooks: () => void
   onUninstallHooks: () => void
   onRelaunch: (rebuild: boolean) => Promise<string | null>
+  /** Re-fetch the workspace list (e.g. after toggling the Cockpit workspace). */
+  onRefreshWorkspaces: () => void
   onClose: () => void
 }
 
@@ -39,6 +41,7 @@ export function SettingsPanel({
   onInstallHooks,
   onUninstallHooks,
   onRelaunch,
+  onRefreshWorkspaces,
   onClose
 }: Props): JSX.Element {
   const [relaunchMsg, setRelaunchMsg] = useState<string | null>(null)
@@ -110,6 +113,17 @@ export function SettingsPanel({
           <button className="btn danger" onClick={closeAllSessions}>
             Close all sessions
           </button>
+          <label className="settings-check">
+            <input
+              type="checkbox"
+              checked={!!settings?.hideCockpitWorkspace}
+              onChange={async (e) => {
+                setSettings(await window.cockpit.settings.update({ hideCockpitWorkspace: e.target.checked }))
+                onRefreshWorkspaces()
+              }}
+            />
+            Hide the Cockpit workspace (this app’s own repo)
+          </label>
         </div>
 
         <div className="field">

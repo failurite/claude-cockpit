@@ -54,12 +54,16 @@ work, and which is done. `claude-cockpit` gives you:
 - **Close all sessions** (Settings → Sessions) shuts every pane down and sweeps
   any lingering cockpit-owned tmux sessions.
 
-### The "Cockpit Dev" session
-- A special session that opens **in this repo** so you can work on Cockpit itself.
-  It always opens automatically.
-- When `tmux` is installed it runs inside a **persistent tmux session**, so the
-  real `claude` process survives app restarts (Cockpit just re-attaches). Without
-  tmux it falls back to `claude --resume` (conversation persists, process restarts).
+### The built-in "Cockpit" workspace
+- Cockpit's own repo appears as a **first-class workspace named "Cockpit"** —
+  present by default on a fresh install, with the same git row, issues list, and
+  session controls as any workspace. Hide it via Settings → Sessions if you
+  don't hack on the app. It can't be edited/deleted (it's synthesized, not stored).
+- Its **"Cockpit Dev" session opens automatically** so you can always work on the
+  app itself. When `tmux` is installed that session runs inside a **persistent
+  tmux session**, so the real `claude` process survives app restarts (Cockpit just
+  re-attaches). Without tmux it falls back to `claude --resume` (conversation
+  persists, process restarts).
 
 ### Live status (out-of-band)
 - Status comes from **Claude Code hooks**, never from scraping the terminal. A tiny

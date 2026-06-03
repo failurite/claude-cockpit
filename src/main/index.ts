@@ -22,6 +22,7 @@ import {
   killAllCockpitSessions
 } from './tmux.js'
 import type { HookEvent, Workspace, AppSettings } from '../shared/types.js'
+import { COCKPIT_WORKSPACE_ID } from '../shared/types.js'
 
 /** Fixed ingest port so a persistent tmux dev session can reach us after restarts. */
 const INGEST_PORT = 47615
@@ -260,7 +261,7 @@ async function bootstrap(): Promise<void> {
   ipcMain.handle('settings:get', () => getSettings())
   ipcMain.handle('settings:update', (_e, patch: Partial<AppSettings>) => updateSettings(patch))
   ipcMain.handle('dialog:pick-folder', () => pickFolder())
-  ipcMain.handle('workspaces:list', () => getWorkspaces())
+  ipcMain.handle('workspaces:list', () => listAllWorkspaces())
   ipcMain.handle('workspaces:save', (_e, ws: Workspace) => upsertWorkspace(ws))
   ipcMain.handle('workspaces:remove', (_e, id: string) => removeWorkspace(id))
 
@@ -279,12 +280,43 @@ async function bootstrap(): Promise<void> {
 }
 
 function getSettings(): AppSettings {
-  return { killTmuxOnQuit: getFlag('killTmuxOnQuit') }
+  return {
+    killTmuxOnQuit: getFlag('killTmuxOnQuit'),
+    hideCockpitWorkspace: getFlag('hideCockpitWorkspace')
+  }
 }
 
 function updateSettings(patch: Partial<AppSettings>): AppSettings {
   if (typeof patch.killTmuxOnQuit === 'boolean') setFlag('killTmuxOnQuit', patch.killTmuxOnQuit)
+  if (typeof patch.hideCockpitWorkspace === 'boolean')
+    setFlag('hideCockpitWorkspace', patch.hideCockpitWorkspace)
   return getSettings()
+}
+
+/** The built-in "Cockpit" workspace — the app's own repo, synthesized (never stored). */
+function cockpitWorkspace(): Workspace {
+  return {
+    id: COCKPIT_WORKSPACE_ID,
+    name: 'Cockpit',
+    path: REPO_ROOT,
+    // Dev defaults: plain `claude`, no browser (the dev session is special).
+    defaults: { dangerouslySkipPermissions: false, chrome: false, externalChrome: false, extraArgs: '' }
+  }
+}
+
+/** All workspaces as shown in the UI: built-in Cockpit first (unless hidden), then the user's. */
+function listAllWorkspaces(): Workspace[] {
+  const devAvailable =
+    existsSync(join(REPO_ROOT, 'package.json')) && existsSync(join(REPO_ROOT, 'src'))
+  const base = getWorkspaces()
+  if (!devAvailable || getFlag('hideCockpitWorkspace')) return base
+  return [cockpitWorkspace(), ...base]
+}
+
+/** Resolve a workspace by id, including the built-in Cockpit one. */
+function findWorkspace(id: string): Workspace | undefined {
+  if (id === COCKPIT_WORKSPACE_ID) return cockpitWorkspace()
+  return getWorkspaces().find((w) => w.id === id)
 }
 
 /** Info about the app's own repo + runtime. */
@@ -317,7 +349,7 @@ function createSession(opts?: {
   let { cwd, options } = opts ?? {}
   const workspaceId = opts?.workspaceId ?? null
   if (workspaceId) {
-    const ws = getWorkspaces().find((w) => w.id === workspaceId)
+    const ws = findWorkspace(workspaceId)
     if (ws) {
       cwd = ws.path
       options = { ...ws.defaults, ...(opts?.options ?? {}) }
@@ -333,8 +365,9 @@ function createDevSession(): ReturnType<SessionManager['create']> {
     command: 'claude',
     name: 'Cockpit Dev',
     kind: 'dev',
+    workspaceId: COCKPIT_WORKSPACE_ID,
     // Plain `claude` for self-development (no skip-permissions / chrome by default).
-    options: { dangerouslySkipPermissions: false, chrome: false, extraArgs: '' }
+    options: { dangerouslySkipPermissions: false, chrome: false, externalChrome: false, extraArgs: '' }
   })
 }
 
@@ -348,7 +381,7 @@ async function startIssueSession(
   workspaceId: string,
   number: number
 ): Promise<import('../shared/types.js').TerminalSession> {
-  const ws = getWorkspaces().find((w) => w.id === workspaceId)
+  const ws = findWorkspace(workspaceId)
   if (!ws) throw new Error('workspace not found')
   const repoDir = expandTilde(ws.path)
 
@@ -439,6 +472,8 @@ async function pickFolder(): Promise<string | null> {
 
 /** Create or update a workspace (upsert by id); returns the full list. */
 function upsertWorkspace(ws: Workspace): Workspace[] {
+  // The built-in Cockpit workspace is synthesized — not editable/storable.
+  if (ws.id === COCKPIT_WORKSPACE_ID) return listAllWorkspaces()
   // Normalize a hand-typed `~/...` path so sessions spawn in a real dir.
   ws = { ...ws, path: expandTilde(ws.path) }
   const list = getWorkspaces()
@@ -446,14 +481,15 @@ function upsertWorkspace(ws: Workspace): Workspace[] {
   if (i === -1) list.push(ws)
   else list[i] = ws
   saveWorkspaces(list)
-  return list
+  return listAllWorkspaces()
 }
 
-/** Remove a workspace by id; returns the remaining list. */
+/** Remove a workspace by id; returns the remaining list. (Hide Cockpit via Settings instead.) */
 function removeWorkspace(id: string): Workspace[] {
-  const list = getWorkspaces().filter((w) => w.id !== id)
-  saveWorkspaces(list)
-  return list
+  if (id !== COCKPIT_WORKSPACE_ID) {
+    saveWorkspaces(getWorkspaces().filter((w) => w.id !== id))
+  }
+  return listAllWorkspaces()
 }
 
 function runBuild(): Promise<void> {

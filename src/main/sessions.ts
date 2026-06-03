@@ -15,6 +15,7 @@ import {
 import { watchTranscriptForSession } from './transcripts.js'
 import { isTmuxAvailable, devLaunchCommand, enableMouse, sq, DEV_TMUX_NAME } from './tmux.js'
 import type { IssueRef } from '../shared/types.js'
+import { COCKPIT_WORKSPACE_ID } from '../shared/types.js'
 
 /** Cap on retained pty output for replay when a terminal view (re)mounts. */
 const MAX_BUFFER = 200_000
@@ -159,7 +160,9 @@ export class SessionManager extends EventEmitter {
     const command = opts?.command || 'claude'
     const kind = opts?.kind || 'normal'
     const options: SessionOptions = { ...DEFAULT_SESSION_OPTIONS, ...opts?.options }
-    const workspaceId = opts?.workspaceId ?? null
+    // Dev sessions always live in the built-in Cockpit workspace (also migrates
+    // panes persisted before that workspace existed).
+    const workspaceId = kind === 'dev' ? COCKPIT_WORKSPACE_ID : (opts?.workspaceId ?? null)
 
     // The dev session is special: when tmux is available it runs inside a
     // persistent tmux server (survives app restarts) under a stable pane id, so

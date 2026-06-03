@@ -32,6 +32,13 @@ export const DEFAULT_SESSION_OPTIONS: SessionOptions = {
   extraArgs: ''
 }
 
+/**
+ * Id of the built-in "Cockpit" workspace (the app's own repo). It's synthesized
+ * by main — present by default, not stored, not editable/deletable; hidden via
+ * the `hideCockpitWorkspace` setting.
+ */
+export const COCKPIT_WORKSPACE_ID = 'cockpit'
+
 /** A workspace = a directory + the default launch options for sessions opened in it. */
 export interface Workspace {
   /** Stable id (assigned on create). */
@@ -307,6 +314,8 @@ export interface CockpitApi {
 export interface AppSettings {
   /** Kill cockpit-owned tmux sessions when the app fully quits (default false — survival is the point). */
   killTmuxOnQuit: boolean
+  /** Hide the built-in "Cockpit" workspace (the app's own repo) from the sidebar. */
+  hideCockpitWorkspace: boolean
 }
 
 export interface AppInfo {

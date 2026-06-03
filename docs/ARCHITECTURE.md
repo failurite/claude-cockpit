@@ -25,24 +25,40 @@ Claude Code's own extension points rather than reimplementing anything.
 ```
 src/
 ├── main/                     Electron main process (Node)
-│   ├── index.ts              app lifecycle, window, IPC wiring, hook→status map
-│   ├── sessions.ts           SessionManager: ptys + derived TerminalSession state
-│   ├── ingest.ts             localhost HTTP server that hooks POST to
+│   ├── index.ts              app lifecycle, window, IPC wiring, hook→status map,
+│   │                         dev-session auto-open, browser MCP config, relaunch
+│   ├── sessions.ts           SessionManager: ptys + TerminalSession state,
+│   │                         persistence/restore (claude --resume), launch flags
+│   ├── ingest.ts             localhost HTTP server (:47615) that hooks POST to
+│   ├── browser.ts            BrowserManager: per-pane WebContentsView tabs,
+│   │                         drive (navigate/click/type/read/screenshot), layout
+│   ├── browser-rpc.ts        localhost RPC (:47616) the MCP shim calls
+│   ├── git.ts                git status / push / pull per workspace dir
+│   ├── tmux.ts               persistent tmux backing for the dev session
 │   ├── transcripts.ts        chokidar watcher → active sub-agent count
 │   ├── hooks-install.ts      read/modify ~/.claude/settings.json (managed block)
-│   └── store.ts              tiny JSON persistence (session names)
+│   ├── updater.ts            electron-updater wiring (dormant; GitHub Releases)
+│   └── store.ts              JSON persistence: names, panes (+ browser tabs),
+│                             workspaces, one-time flags
 ├── preload/
 │   └── index.ts              contextBridge → window.cockpit (typed API)
 ├── renderer/                 React UI
 │   └── src/
-│       ├── App.tsx           layout, session state, hook-install banner
+│       ├── App.tsx           layout, session state, browser panel toggle
 │       └── components/
-│           ├── Sidebar.tsx       session list, status dots, inline rename
-│           └── TerminalView.tsx  one xterm.js view bound to a pty
+│           ├── Sidebar.tsx       workspaces + sessions, status dots, rename
+│           ├── WorkspaceGit.tsx  branch / ↑↓ counts / Pull / Push row
+│           ├── TerminalView.tsx  one xterm.js view bound to a pty
+│           ├── BrowserPanel.tsx  tab strip + URL bar + bounds for the overlay
+│           ├── LaunchDialog.tsx  workspace / custom-session options dialog
+│           └── SettingsPanel.tsx hooks, tmux cleanup, close-all, updates
 ├── shared/
 │   └── types.ts              the main↔renderer contract (single source of truth)
-└── hooks/
-    └── emit.mjs              the hook handler Claude runs; POSTs events to the app
+├── hooks/
+│   └── emit.mjs              the hook handler Claude runs; POSTs events to the app
+└── mcp/
+    └── cockpit-browser.mjs   stdio MCP server Claude spawns; forwards browser
+                              tool calls to the app's RPC, tagged with its pane id
 ```
 
 ### Data flow
@@ -92,28 +108,76 @@ each line is a JSON object with `sessionId`, a `message.content[]` array of bloc
 This is a heuristic and a good place to contribute a more exact implementation
 (e.g. pairing `SubagentStart`/`SubagentStop` hooks if/when available).
 
-## Chrome integration
+## Workspaces, persistence & the dev session
 
-**Implemented: activity detection.** `handleHookEvent` flags a session as
-`usingChrome` when a `PreToolUse` event carries a browser MCP tool
-(`mcp__…chrome…`, see `isBrowserTool`/`browserToolTarget` in `main/index.ts`),
-and clears it on `Stop`. The renderer shows a 🌐 badge with the action. This needs
-no Chrome connection at all — it's read straight from the hook stream.
+- **Workspaces** (`shared/types.ts` `Workspace`) are a directory + default
+  `SessionOptions`, stored in the JSON store. New sessions resolve cwd + options
+  from their workspace; the LaunchDialog overrides them per session. Paths are
+  tilde-expanded at the spawn choke point (`expandTilde` in `sessions.ts`) so a
+  hand-typed `~/code/x` can't make `pty.spawn` fail.
+- **Persistence/restore:** `SessionManager.persist()` writes every pane (name,
+  cwd, command, kind, options, Claude `session_id`, embedded-browser tab URLs) on
+  each change; `restore()` respawns them on boot with `claude --resume <id>` and
+  reopens their browser tabs.
+- **Dev session:** `createDevSession()` opens in the app's own repo (baked in at
+  build time via `__REPO_ROOT__`) and auto-opens on every launch. With tmux
+  installed it runs inside a persistent `cockpit-dev` tmux session, so the real
+  `claude` process survives app restarts — Cockpit re-attaches with
+  `tmux new-session -A`. **Caveat:** `-A` only applies launch flags when the tmux
+  session is *first created*; a long-lived tmux session keeps its original flags
+  until killed (Settings → tmux → Kill).
 
-**Roadmap: visual tab mirror.**
+## Embedded browser (implemented)
 
-`claude --chrome` drives Chrome through the Claude-in-Chrome extension over a
-native-messaging host using the Chrome DevTools Protocol (CDP). The plan:
+Each session can have its own in-app browser that Claude drives — no external
+Chrome. Self-containment was the goal; claude-in-chrome can't do this because it
+attaches to real Chrome via an account-authenticated extension, which Electron
+can't run.
 
-1. Attach the app to the same Chrome over CDP and use `Page.startScreencast` to
-   mirror the driven tab(s) into a pane, optionally forwarding input.
-2. Tie each mirrored tab to the **session** driving it (correlating via the
-   session's MCP/browser activity).
+```
+claude (pane)  ──spawns──►  mcp/cockpit-browser.mjs   (stdio MCP server)
+                              │  newline-delimited JSON-RPC; tags every call
+                              │  with CLAUDE_COCKPIT_PANE_ID from inherited env
+                              ▼
+              Browser RPC server (127.0.0.1:47616, browser-rpc.ts)
+                              ▼
+              BrowserManager (browser.ts) ── owns WebContentsView tabs per pane
+                              ▼
+              renderer BrowserPanel reserves a rectangle; main positions the
+              active tab's view over it (only the foreground pane's active tab
+              is visible)
+```
 
-**Open risk:** CDP generally allows one debugging client per target. If the
-Claude-in-Chrome extension holds that connection, the app may contend for it. The
-fallback is tab metadata (URL/title) + periodic screenshots, which is low-risk.
-Validate the screencast path before committing to it.
+- **Launch wiring:** with `options.chrome` on (default), `claudeFlags()` emits
+  `--mcp-config <userData>/cockpit-browser.mcp.json` instead of `--chrome`. The
+  config registers `mcp/cockpit-browser.mjs` (shipped as an extraResource, like
+  `hooks/`). Opting into `options.externalChrome` (LaunchDialog) restores the old
+  `--chrome` behavior for that session.
+- **Tools exposed to Claude:** `browser_open_tab / navigate / list_tabs /
+  close_tab / click / type / read_text / screenshot`.
+- **Driving:** v1 uses Electron's high-level APIs (`loadURL`,
+  `executeJavaScript` for click/type/read, `capturePage` for screenshots).
+  `scripts/webview-cdp-smoke.cjs` proves full CDP control
+  (`webContents.debugger`, real `Input.dispatchMouseEvent`) works if/when we
+  upgrade to synthetic input.
+- **Profile:** all tabs share one persistent partition
+  (`persist:cockpit-browser`) so logins survive restarts, with the
+  `Electron`/app tokens stripped from the user agent so sign-in pages don't
+  reject the browser. Chrome's password manager / Sync are **not** available —
+  that's proprietary Chrome, not Chromium.
+- **Status badge:** independently of all this, `handleHookEvent` flags a session
+  as `usingChrome` when a `PreToolUse` event carries a browser MCP tool
+  (`isBrowserTool`/`browserToolTarget` in `main/index.ts`) and clears it on
+  `Stop` — that's what lights the 🌐 badge, for embedded and external alike.
+
+## Git (per workspace)
+
+`git.ts` shells out to `git -C <dir>` with `GIT_TERMINAL_PROMPT=0` (auth failures
+return fast instead of hanging): `gitStatus` (branch, upstream, ahead/behind via
+`rev-list --left-right --count @{u}...HEAD`, dirty via `status --porcelain`),
+`gitPush`, `gitPull`. `WorkspaceGit.tsx` renders the row per workspace — and for
+the dev session's repo under "Other" — doing a fast local read on mount plus a
+background `git fetch` so the behind/unpulled count is meaningful.
 
 ## Extending
 

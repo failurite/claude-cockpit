@@ -13,31 +13,40 @@ npm run build      # production bundle into out/
 npm run typecheck  # tsc on main+preload and renderer
 ```
 
-Verify the native terminal backend loads under your Electron:
+Verify the native terminal backend and the embedded-browser control layer load
+under your Electron:
 
 ```bash
-npx electron scripts/pty-smoke.cjs   # prints PTY_OUTPUT:"pty-ok"
+npx electron scripts/pty-smoke.cjs          # prints PTY_OUTPUT:"pty-ok"
+npx electron scripts/webview-cdp-smoke.cjs  # prints SMOKE_RESULT: PASS
 ```
+
+To test against the installed Desktop app, `npm run update-app` rebuilds and
+swaps it in place (see the README's "Updating" section).
 
 ## Project layout
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full map. The short
 version:
 
-- `src/main/` — Electron main: ptys, hook ingest server, transcript watcher.
+- `src/main/` — Electron main: ptys, hook ingest server, embedded-browser
+  manager + RPC, git, tmux dev session, transcript watcher, store.
 - `src/preload/` — the `window.cockpit` bridge.
-- `src/renderer/` — React UI (Sidebar, TerminalView, App).
+- `src/renderer/` — React UI (Sidebar, WorkspaceGit, TerminalView, BrowserPanel,
+  LaunchDialog, SettingsPanel, App).
 - `src/shared/types.ts` — the single source of truth for the main↔renderer
   contract. Change this first when adding a feature.
 - `hooks/emit.mjs` — the hook handler Claude runs.
+- `mcp/cockpit-browser.mjs` — the stdio MCP server that gives sessions their
+  embedded browser tools.
 
 ## Good first issues
 
 - **Split/grid layout** — show more than one terminal at once.
 - **More precise sub-agent counting** — see `transcripts.ts`.
-- **Chrome tab mirror** — the big one; see the
-  [Chrome integration](docs/ARCHITECTURE.md#chrome-integration) section and
-  validate the CDP screencast feasibility question first.
+- **Real synthetic input for the embedded browser** — upgrade click/type from
+  `executeJavaScript` to CDP `Input.dispatch*` (`scripts/webview-cdp-smoke.cjs`
+  already proves the approach).
 - **Windows/Linux** — the stack is cross-platform but untested off macOS.
 
 ## Conventions

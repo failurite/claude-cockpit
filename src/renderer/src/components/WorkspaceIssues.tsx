@@ -94,14 +94,9 @@ export function WorkspaceIssues({ workspaceId, path, sessions, onStart }: Props)
           {visible.map((i) => {
             const live = sessionFor(i.number)
             return (
-              <div key={i.number} className="ws-issue" title={i.url}>
+              <div key={i.number} className="ws-issue" title={`${i.title}\n${i.labels.join(', ')}\n${i.url}`}>
                 <span className="ws-issue-num">#{i.number}</span>
                 <span className="ws-issue-title">{i.title}</span>
-                {i.labels.slice(0, 2).map((l) => (
-                  <span key={l} className="ws-issue-label">
-                    {l}
-                  </span>
-                ))}
                 {live ? (
                   <span className={`dot ${live.status}`} title={`session: ${live.status}`} />
                 ) : (

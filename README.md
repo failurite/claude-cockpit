@@ -91,6 +91,21 @@ work, and which is done. `claude-cockpit` gives you:
 - **External Chrome opt-in:** tick *"Use external Chrome instead"* in the advanced
   startup config to use real Chrome / `claude-in-chrome` for that session.
 
+### Issue-driven sessions (GitHub)
+- Each workspace shows its repo's **open GitHub issues** (via the `gh` CLI —
+  Cockpit reuses your existing auth, never stores tokens).
+- **▶ Start** on an issue creates an **isolated git worktree + branch**
+  (`issue/<n>-<slug>`) and spawns a dedicated session in it, named `#<n> <title>`
+  with a `#<n>` chip — the session↔issue mapping is explicit and persisted. The
+  session gets the issue body as kickoff context.
+- Work **multiple issues concurrently**: worktrees mean sessions never touch each
+  other's files; the main checkout stays clean.
+- **✓ Done** (status bar) lands the work: rebase onto the default branch → merge +
+  push → close the issue with a commit-summary comment → remove the worktree and
+  retire the session. Finishes are **serialized** so main never races. If the
+  worktree is dirty or the rebase conflicts, Cockpit types instructions into that
+  session so its Claude fixes things, then you press Done again.
+
 ### Per-workspace git
 - Each workspace (and the Dev session's repo) shows branch, ↑ahead / ↓behind, and a
   dirty marker, with **Pull / Push** and a fetch-refresh button. Git runs with
@@ -185,6 +200,8 @@ signing prompts**. Push only **source** to GitHub — build artifacts never go t
 - [x] **Embedded per-session browser** (WebContentsView + a Cockpit-owned MCP
       server), persistent login profile, tab persistence, external-Chrome opt-in.
 - [x] **Per-workspace git** status + push/pull.
+- [x] **Issue-driven sessions** — per-issue worktrees + branches, concurrent
+      work, Done flow (rebase → merge → push → close issue).
 - [ ] Split-view / grid layout (more than one terminal visible at once).
 - [ ] Real synthetic input for the embedded browser (CDP `Input.dispatch`),
       background-tab screenshots.

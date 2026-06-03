@@ -170,6 +170,30 @@ claude (pane)  ──spawns──►  mcp/cockpit-browser.mjs   (stdio MCP serve
   (`isBrowserTool`/`browserToolTarget` in `main/index.ts`) and clears it on
   `Stop` — that's what lights the 🌐 badge, for embedded and external alike.
 
+## Issue-driven sessions
+
+GitHub issues become dedicated, concurrent sessions with clean repo sync:
+
+- **Source:** `issues.ts` wraps the `gh` CLI (`issue list/view/close`) in the
+  workspace dir — reuses the user's gh auth, fully non-interactive.
+- **Isolation:** `worktrees.ts` gives each issue a git worktree + branch
+  (`issue/<n>-<slug>`, from `origin/<default>`), stored under
+  `userData/worktrees/<repo>/issue-<n>` so the main checkout's `git status`
+  stays clean. Concurrent sessions can never touch each other's files.
+- **Mapping:** `TerminalSession.issue` (`IssueRef`: number/title/url/branch/
+  worktree/repoDir) is set at spawn, shown as a `#<n>` chip, and persisted so
+  restarts keep the mapping. The issue body is written *beside* the worktree
+  (never committable) and referenced from the kickoff prompt.
+- **Done flow** (`finishIssueWorktree`, serialized through a module-level merge
+  queue so only one issue lands at a time): require a clean worktree → fetch →
+  `rebase origin/<default>` → `push origin HEAD:refs/heads/<default>` (or local
+  `merge --ff-only` when there's no remote) → best-effort `pull --ff-only` in
+  the main checkout → `worktree remove` + `branch -D` → `gh issue close
+  --comment` with the merged-commit summary → close the pane.
+- **Failure handling:** `dirty` and `conflict` results leave the worktree
+  intact and Cockpit *types instructions into that session's pty* so its Claude
+  commits / resolves the rebase; the user presses Done again.
+
 ## Git (per workspace)
 
 `git.ts` shells out to `git -C <dir>` with `GIT_TERMINAL_PROMPT=0` (auth failures

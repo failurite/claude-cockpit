@@ -26,7 +26,8 @@ export function isTmuxAvailable(): boolean {
   return tmuxBin() !== null
 }
 
-function sq(s: string): string {
+/** Single-quote a string for the shell (also used for claude kickoff prompts). */
+export function sq(s: string): string {
   return `'${s.replace(/'/g, "'\\''")}'`
 }
 

@@ -9,6 +9,9 @@ import { startIngestServer, type IngestServer } from './ingest.js'
 import { BrowserManager } from './browser.js'
 import { startBrowserRpc, type BrowserRpcServer } from './browser-rpc.js'
 import { gitStatus, gitPush, gitPull } from './git.js'
+import { ghAvailable, listIssues, viewIssue, closeIssue } from './issues.js'
+import { createIssueWorktree, finishIssueWorktree, worktreeRoot } from './worktrees.js'
+import type { IssueDoneResult, IssueRef } from '../shared/types.js'
 import { initStore, getFlag, setFlag, getWorkspaces, saveWorkspaces } from './store.js'
 import { hookStatus, installHooks, uninstallHooks } from './hooks-install.js'
 import { initUpdater } from './updater.js'
@@ -239,6 +242,14 @@ async function bootstrap(): Promise<void> {
     browserMgr.setVisible(paneId, visible)
   )
 
+  // ---- GitHub issues → dedicated sessions ----
+  ipcMain.handle('issues:available', (_e, dir: string) => ghAvailable(expandTilde(dir)))
+  ipcMain.handle('issues:list', (_e, dir: string) => listIssues(expandTilde(dir)))
+  ipcMain.handle('issues:start', (_e, workspaceId: string, number: number) =>
+    startIssueSession(workspaceId, number)
+  )
+  ipcMain.handle('issues:done', (_e, paneId: string) => finishIssueSession(paneId))
+
   // ---- git (workspace push/pull) ----
   ipcMain.handle('git:status', (_e, dir: string, fetch?: boolean) =>
     gitStatus(expandTilde(dir), fetch)
@@ -325,6 +336,96 @@ function createDevSession(): ReturnType<SessionManager['create']> {
     // Plain `claude` for self-development (no skip-permissions / chrome by default).
     options: { dangerouslySkipPermissions: false, chrome: false, extraArgs: '' }
   })
+}
+
+/**
+ * Start a session dedicated to a GitHub issue: isolated worktree + branch, the
+ * issue body staged next to the worktree (never committable), and a kickoff
+ * prompt so Claude starts with full context. Reuses an existing session for the
+ * same issue instead of duplicating.
+ */
+async function startIssueSession(
+  workspaceId: string,
+  number: number
+): Promise<import('../shared/types.js').TerminalSession> {
+  const ws = getWorkspaces().find((w) => w.id === workspaceId)
+  if (!ws) throw new Error('workspace not found')
+  const repoDir = expandTilde(ws.path)
+
+  const existing = manager
+    .list()
+    .find((s) => s.issue && s.issue.repoDir === repoDir && s.issue.number === number)
+  if (existing) return existing
+
+  const issue = await viewIssue(repoDir, number)
+  const { worktree, branch } = await createIssueWorktree(repoDir, number, issue.title)
+
+  // Issue body lives BESIDE the worktree so it can never be committed by accident.
+  const bodyFile = join(worktreeRoot(repoDir), `issue-${number}.md`)
+  writeFileSync(bodyFile, `# #${issue.number} ${issue.title}\n\n${issue.body || '(no body)'}\n\n${issue.url}\n`)
+
+  const ref: IssueRef = { number, title: issue.title, url: issue.url, branch, worktree, repoDir }
+  const prompt =
+    `You are working on GitHub issue #${number}: "${issue.title}". ` +
+    `The full issue body is in ${bodyFile} — read it first (do not commit it; it lives outside the repo). ` +
+    `This directory is an isolated git worktree on branch ${branch}; the default branch is merged separately. ` +
+    `Implement the issue, verify your work, and commit it here with clear messages. ` +
+    `When everything is committed and ready, say so — the user will press Done to merge and close the issue.`
+
+  return manager.create({
+    cwd: worktree,
+    command: 'claude',
+    name: `#${number} ${issue.title}`.slice(0, 60),
+    workspaceId,
+    options: ws.defaults,
+    issue: ref,
+    initialPrompt: prompt
+  })
+}
+
+/**
+ * The Done flow for an issue session: rebase → land on the default branch →
+ * close the issue with a summary comment → retire the session. `dirty` and
+ * `conflict` outcomes are typed INTO the session so its Claude fixes the state,
+ * then Done is pressed again.
+ */
+async function finishIssueSession(paneId: string): Promise<IssueDoneResult> {
+  const s = manager.list().find((x) => x.id === paneId)
+  if (!s?.issue) return { ok: false, status: 'error', message: 'This session has no issue mapped.' }
+  const { repoDir, worktree, branch, number } = s.issue
+
+  const res = await finishIssueWorktree(repoDir, worktree, branch)
+  if (res.status === 'dirty') {
+    manager.write(
+      paneId,
+      `Done was pressed for issue #${number}, but the worktree has uncommitted changes. ` +
+        `Please review and commit everything (or discard scratch files), then say "ready" so Done can be pressed again.\r`
+    )
+    return res
+  }
+  if (res.status === 'conflict') {
+    manager.write(
+      paneId,
+      `Done was pressed for issue #${number}, but rebasing onto the default branch hit conflicts. ` +
+        `Resolve the conflicts in this worktree (git status), run git rebase --continue, ` +
+        `then say "ready" so Done can be pressed again.\r`
+    )
+    return res
+  }
+  if (res.status !== 'merged') return res
+
+  // Close the issue with a summary; a failure here shouldn't undo the merge.
+  try {
+    await closeIssue(
+      repoDir,
+      number,
+      `Completed via a Claude Cockpit session.\n\nCommits merged:\n${res.summary || '(none)'}`
+    )
+  } catch (e) {
+    res.message += ` (Issue close failed: ${(e as Error).message} — close it manually.)`
+  }
+  manager.close(paneId)
+  return res
 }
 
 /** Native folder picker; returns the chosen absolute path or null. */

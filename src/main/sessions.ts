@@ -13,7 +13,8 @@ import {
   type PersistedSession
 } from './store.js'
 import { watchTranscriptForSession } from './transcripts.js'
-import { isTmuxAvailable, devLaunchCommand, enableMouse, DEV_TMUX_NAME } from './tmux.js'
+import { isTmuxAvailable, devLaunchCommand, enableMouse, sq, DEV_TMUX_NAME } from './tmux.js'
+import type { IssueRef } from '../shared/types.js'
 
 /** Cap on retained pty output for replay when a terminal view (re)mounts. */
 const MAX_BUFFER = 200_000
@@ -108,6 +109,7 @@ export class SessionManager extends EventEmitter {
       claudeSessionId: p.session.claudeSessionId,
       workspaceId: p.session.workspaceId,
       options: p.session.options,
+      issue: p.session.issue,
       // Drop blank tabs so we don't restore empty about:blank panes.
       browserTabs: (this.browser.getTabs?.(p.session.id) ?? []).filter(
         (t) => t.url && t.url !== 'about:blank'
@@ -131,7 +133,8 @@ export class SessionManager extends EventEmitter {
         kind: s.kind,
         workspaceId: s.workspaceId,
         options: s.options,
-        resumeId: s.claudeSessionId
+        resumeId: s.claudeSessionId,
+        issue: s.issue ?? null
       })
       // Reopen this pane's embedded-browser tabs (cookies/logins persist via the profile).
       if (s.browserTabs?.length) this.browser.restoreTabs?.(session.id, s.browserTabs)
@@ -147,6 +150,10 @@ export class SessionManager extends EventEmitter {
     options?: Partial<SessionOptions>
     /** If set (and command is claude), launch `claude … --resume <id>` to restore a conversation. */
     resumeId?: string | null
+    /** The GitHub issue this session is dedicated to (cwd should be its worktree). */
+    issue?: IssueRef | null
+    /** Kickoff prompt passed to claude on first launch (not on resume). */
+    initialPrompt?: string
   }): TerminalSession {
     const cwd = expandTilde(opts?.cwd || homedir())
     const command = opts?.command || 'claude'
@@ -175,7 +182,13 @@ export class SessionManager extends EventEmitter {
       // Build `claude <flags> [--resume <id>]`. Non-claude commands launch verbatim.
       const parts =
         command === 'claude'
-          ? ['claude', ...claudeFlags(options, this.browser.mcpConfig), ...(opts?.resumeId ? ['--resume', opts.resumeId] : [])]
+          ? [
+              'claude',
+              ...claudeFlags(options, this.browser.mcpConfig),
+              ...(opts?.resumeId ? ['--resume', opts.resumeId] : []),
+              // Kickoff prompt (e.g. issue context) — only on first launch, not resume.
+              ...(opts?.initialPrompt && !opts?.resumeId ? [sq(opts.initialPrompt)] : [])
+            ]
           : [command]
       launch = parts.join(' ')
     }
@@ -210,6 +223,7 @@ export class SessionManager extends EventEmitter {
       workspaceId,
       options,
       tmuxSession: tmuxDev ? DEV_TMUX_NAME : null,
+      issue: opts?.issue ?? null,
       claudeSessionId: null,
       status: 'starting',
       subagentCount: 0,

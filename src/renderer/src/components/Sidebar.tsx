@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { SessionStatus, TerminalSession, Workspace } from '../../../shared/types'
 import { WorkspaceGit } from './WorkspaceGit'
+import { WorkspaceIssues } from './WorkspaceIssues'
 
 const STATUS_LABEL: Record<SessionStatus, string> = {
   starting: 'starting…',
@@ -25,6 +26,8 @@ interface Props {
   onNewWorkspace: () => void
   onEditWorkspace: (ws: Workspace) => void
   onDeleteWorkspace: (id: string) => void
+  /** Start (or focus) the dedicated session for a GitHub issue. */
+  onStartIssue: (workspaceId: string, number: number) => void
   onOpenSettings: () => void
 }
 
@@ -40,6 +43,7 @@ export function Sidebar({
   onNewWorkspace,
   onEditWorkspace,
   onDeleteWorkspace,
+  onStartIssue,
   onOpenSettings
 }: Props): JSX.Element {
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -91,6 +95,11 @@ export function Sidebar({
             {s.kind === 'dev' && (
               <span className="dev-chip" title="Works on claude-cockpit itself">
                 🛠
+              </span>
+            )}
+            {s.issue && (
+              <span className="issue-chip" title={`${s.issue.url} · branch ${s.issue.branch}`}>
+                #{s.issue.number}
               </span>
             )}
             <span
@@ -205,6 +214,14 @@ export function Sidebar({
                 </div>
               </div>
               {!isCollapsed && <WorkspaceGit path={ws.path} />}
+              {!isCollapsed && (
+                <WorkspaceIssues
+                  workspaceId={ws.id}
+                  path={ws.path}
+                  sessions={items}
+                  onStart={onStartIssue}
+                />
+              )}
               {!isCollapsed && (
                 <ul className="session-list">
                   {items.length ? (

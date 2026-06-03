@@ -1,7 +1,7 @@
 import { app } from 'electron'
 import { join } from 'path'
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
-import type { SessionOptions, Workspace } from '../shared/types.js'
+import type { IssueRef, SessionOptions, Workspace } from '../shared/types.js'
 
 /** A pane as persisted to disk so it can be restored on next launch. */
 export interface PersistedSession {
@@ -17,6 +17,8 @@ export interface PersistedSession {
   options: SessionOptions
   /** Embedded-browser tabs (URLs) to reopen on restore; logins persist via the profile. */
   browserTabs?: { url: string; active: boolean }[]
+  /** The GitHub issue this session is dedicated to (restores the mapping + worktree cwd). */
+  issue?: IssueRef | null
 }
 
 /**

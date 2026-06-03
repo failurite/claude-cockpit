@@ -247,6 +247,93 @@ body {
   white-space: nowrap;
 }
 
+/* Issues list under a workspace. */
+.ws-issues {
+  padding: 0 10px 4px 24px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.ws-issues-toggle {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+}
+.ws-issues-toggle:hover {
+  color: var(--text);
+}
+.ws-issues-count {
+  margin-left: 6px;
+  background: #232733;
+  border-radius: 8px;
+  padding: 0 6px;
+}
+.ws-issues-body {
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.ws-issue {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.ws-issue-num {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.ws-issue-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+.ws-issue-label {
+  background: #232733;
+  border-radius: 4px;
+  padding: 0 5px;
+  font-size: 10px;
+}
+.ws-issues-note {
+  font-size: 10px;
+}
+.ws-issues-refresh {
+  align-self: flex-start;
+  margin-top: 2px;
+}
+
+/* Issue chip on a session row + Done button in the status bar. */
+.issue-chip {
+  color: var(--accent);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.statusbar .done-btn {
+  background: var(--accent);
+  border: none;
+  color: #08111f;
+  font-weight: 600;
+  font-size: 11px;
+  border-radius: 6px;
+  padding: 2px 10px;
+  cursor: pointer;
+}
+.statusbar .done-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.statusbar .issue-msg {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .session-list {
   list-style: none;
   margin: 0;

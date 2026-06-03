@@ -24,7 +24,10 @@ Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design. Key files
 - `src/main/browser.ts` — `BrowserManager`: per-pane `WebContentsView` tabs,
   drive/observe/screenshot, persistent profile, overlay layout.
 - `src/main/browser-rpc.ts` — localhost RPC (:47616) the browser MCP shim calls.
-- `src/main/git.ts` — git status / push / pull for workspace dirs.
+- `src/main/git.ts` — git status / push / pull for workspace dirs (exports `runGit`).
+- `src/main/issues.ts` — gh CLI wrapper (list/view/close GitHub issues).
+- `src/main/worktrees.ts` — per-issue worktree/branch isolation + the serialized
+  Done flow (rebase → merge to default branch → push → cleanup).
 - `src/main/tmux.ts` — persistent tmux backing for the dev session.
 - `src/main/transcripts.ts` — sub-agent counting from `~/.claude/projects/*.jsonl`.
 - `src/main/store.ts` — JSON persistence (names, panes + browser tabs, workspaces, flags).

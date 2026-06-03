@@ -71,6 +71,12 @@ const api: CockpitApi = {
       return () => browserTabSubs.delete(cb)
     }
   },
+  issues: {
+    available: (dir) => ipcRenderer.invoke('issues:available', dir),
+    list: (dir) => ipcRenderer.invoke('issues:list', dir),
+    start: (workspaceId, number) => ipcRenderer.invoke('issues:start', workspaceId, number),
+    done: (paneId) => ipcRenderer.invoke('issues:done', paneId)
+  },
   git: {
     status: (dir, fetch) => ipcRenderer.invoke('git:status', dir, fetch),
     push: (dir) => ipcRenderer.invoke('git:push', dir),

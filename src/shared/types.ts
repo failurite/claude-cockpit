@@ -62,6 +62,8 @@ export interface TerminalSession {
   options: SessionOptions
   /** tmux session name backing this pane (dev session, when tmux is available), else null. */
   tmuxSession: string | null
+  /** The GitHub issue this session is dedicated to (null for normal sessions). */
+  issue: IssueRef | null
   /** Claude Code's own sessionId, once we learn it from a hook/transcript. May be null for plain shells. */
   claudeSessionId: string | null
   status: SessionStatus
@@ -75,6 +77,38 @@ export interface TerminalSession {
   lastActivity: string
   /** ms epoch of last update (stamped in main). */
   updatedAt: number
+}
+
+/** A GitHub issue as listed in a workspace's Issues panel (via the gh CLI). */
+export interface IssueSummary {
+  number: number
+  title: string
+  url: string
+  labels: string[]
+  updatedAt: string
+}
+
+/** The issue a session is dedicated to, with its isolation worktree + branch. */
+export interface IssueRef {
+  number: number
+  title: string
+  url: string
+  /** Branch the work happens on, e.g. "issue/42-fix-login". */
+  branch: string
+  /** Absolute path of the session's isolated git worktree. */
+  worktree: string
+  /** The workspace's main checkout this issue belongs to. */
+  repoDir: string
+}
+
+/** Outcome of the Done flow for an issue session. */
+export interface IssueDoneResult {
+  ok: boolean
+  /** merged = landed on the default branch; dirty/conflict = sent back to the session. */
+  status: 'merged' | 'dirty' | 'conflict' | 'error'
+  message: string
+  /** One-line-per-commit summary of what was merged (when status = merged). */
+  summary?: string
 }
 
 /** Git state of a workspace directory, for the sidebar push/pull UI. */
@@ -233,6 +267,17 @@ export interface CockpitApi {
     setVisible(paneId: string, visible: boolean): void
     /** Subscribe to tab-list changes for any pane. Returns an unsubscribe fn. */
     onTabsChanged(cb: (paneId: string, tabs: BrowserTab[]) => void): () => void
+  }
+  /** GitHub issues per workspace + issue-dedicated sessions (gh CLI). */
+  issues: {
+    /** True if the gh CLI is installed and authenticated for this repo. */
+    available(dir: string): Promise<boolean>
+    /** Open issues for the repo at `dir`. */
+    list(dir: string): Promise<IssueSummary[]>
+    /** Create an isolated worktree + branch for an issue and spawn a session in it. */
+    start(workspaceId: string, number: number): Promise<TerminalSession>
+    /** Finish an issue session: rebase → merge to default branch → push → close issue. */
+    done(paneId: string): Promise<IssueDoneResult>
   }
   /** Git status + push/pull for a workspace directory. */
   git: {

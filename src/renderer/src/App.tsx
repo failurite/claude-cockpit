@@ -68,6 +68,25 @@ export default function App(): JSX.Element {
   }, [])
 
   const closeSession = useCallback((id: string) => window.cockpit.closeSession(id), [])
+
+  // GitHub-issue sessions: start (or focus) one, and the Done merge flow.
+  const [issueBusy, setIssueBusy] = useState(false)
+  const [issueMsg, setIssueMsg] = useState<string | null>(null)
+  const startIssue = useCallback(async (workspaceId: string, number: number) => {
+    try {
+      const s = await window.cockpit.issues.start(workspaceId, number)
+      setActiveId(s.id)
+    } catch (e) {
+      setIssueMsg(`Couldn't start issue session: ${(e as Error).message}`)
+    }
+  }, [])
+  const doneIssue = useCallback(async (paneId: string) => {
+    setIssueBusy(true)
+    setIssueMsg(null)
+    const r = await window.cockpit.issues.done(paneId)
+    setIssueMsg(r.message)
+    setIssueBusy(false)
+  }, [])
   const renameSession = useCallback(
     (id: string, name: string) => window.cockpit.renameSession(id, name),
     []
@@ -162,6 +181,7 @@ export default function App(): JSX.Element {
         onNewWorkspace={() => setDialog({ kind: 'workspace-new' })}
         onEditWorkspace={(ws) => setDialog({ kind: 'workspace-edit', ws })}
         onDeleteWorkspace={deleteWorkspace}
+        onStartIssue={startIssue}
         onOpenSettings={() => setSettingsOpen(true)}
       />
       <main className="stage">
@@ -200,6 +220,21 @@ export default function App(): JSX.Element {
             >
               🌐 {browserOpen[active.id] ? 'Hide' : 'Browser'}
             </button>
+            {active.issue && (
+              <button
+                className="done-btn"
+                disabled={issueBusy}
+                onClick={() => doneIssue(active.id)}
+                title={`Rebase, merge to the default branch, push, and close issue #${active.issue.number}`}
+              >
+                {issueBusy ? 'Merging…' : `✓ Done #${active.issue.number}`}
+              </button>
+            )}
+            {issueMsg && (
+              <span className="muted issue-msg" title={issueMsg}>
+                {issueMsg.split('\n')[0]}
+              </span>
+            )}
             <span className="muted">{active.status}</span>
             <span className="muted">· {active.lastActivity}</span>
             {active.usingChrome && (

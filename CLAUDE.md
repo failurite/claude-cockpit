@@ -82,8 +82,11 @@ is wired for the GitHub-Releases path but dormant (no launch-time check).
 
 ## Git / GitHub
 
-Public repo: `failurite/claude-cockpit` (origin, branch `main`). Commit with clear
-messages; push when asked. Run the build before committing.
+Public repo: `failurite/claude-cockpit` (origin, branch `main`). Each feature or
+bug fix gets its own commit with a clear description of what changed, **pushed to
+origin immediately** — don't accumulate unpushed commits. Keep the docs current in
+the same change. Run typecheck + build before committing. (Never commit the
+personal `scripts/*-claude-local.sh` migration scripts.)
 
 ## Roadmap (see README)
 

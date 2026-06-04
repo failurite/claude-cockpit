@@ -36,8 +36,9 @@ body {
 
 /* ---------- Sidebar ---------- */
 .sidebar {
+  /* Width is driven inline (user-resizable); these are fallbacks. */
   width: 248px;
-  min-width: 248px;
+  min-width: 180px;
   background: var(--bg-panel);
   border-right: 1px solid var(--border);
   display: flex;
@@ -612,12 +613,50 @@ body {
 }
 
 .browser-panel {
-  width: 46%;
-  min-width: 360px;
+  /* Width is driven inline (user-resizable); flex keeps it from being squeezed. */
+  flex: 0 0 auto;
+  position: relative;
   display: flex;
   flex-direction: column;
   border-left: 1px solid var(--border);
   background: #0f1116;
+}
+.browser-panel .v-resizer.browser-edge {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 5;
+}
+
+/* Drag handles + collapsed sidebar rail. */
+.v-resizer {
+  width: 5px;
+  flex: 0 0 auto;
+  cursor: col-resize;
+  background: transparent;
+}
+.v-resizer:hover {
+  background: var(--accent);
+  opacity: 0.5;
+}
+body.dragging-h {
+  cursor: col-resize;
+  user-select: none;
+}
+body.dragging-h .v-resizer {
+  background: var(--accent);
+  opacity: 0.5;
+}
+.sidebar-rail {
+  width: 28px;
+  flex: 0 0 auto;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 44px; /* clear the hiddenInset traffic lights */
 }
 .browser-tabs {
   display: flex;

@@ -19,6 +19,34 @@ export function BrowserPanel({ paneId, onClose }: Props): JSX.Element {
   const [urlDraft, setUrlDraft] = useState('')
   const stageRef = useRef<HTMLDivElement>(null)
 
+  // Panel width, user-resizable via the left-edge handle; persisted.
+  const [width, setWidth] = useState(() => {
+    const w = Number(localStorage.getItem('browserPanelWidth'))
+    return w >= 300 && w <= 1600 ? w : 520
+  })
+  useEffect(() => localStorage.setItem('browserPanelWidth', String(width)), [width])
+  const startResize = (e: React.MouseEvent): void => {
+    e.preventDefault()
+    // The WebContentsView is a NATIVE overlay — it would swallow mouse events
+    // mid-drag, so hide it while resizing and restore on release.
+    window.cockpit.browser.setVisible(paneId, false)
+    const startX = e.clientX
+    const startW = width
+    const move = (ev: MouseEvent): void =>
+      setWidth(
+        Math.min(Math.max(300, window.innerWidth - 420), Math.max(300, startW - (ev.clientX - startX)))
+      )
+    const up = (): void => {
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', up)
+      document.body.classList.remove('dragging-h')
+      window.cockpit.browser.setVisible(paneId, true)
+    }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', up)
+    document.body.classList.add('dragging-h')
+  }
+
   const active = tabs.find((t) => t.active) ?? null
 
   // Load tabs + subscribe to live changes for this pane.
@@ -42,10 +70,12 @@ export function BrowserPanel({ paneId, onClose }: Props): JSX.Element {
       const el = stageRef.current
       if (!el) return
       const r = el.getBoundingClientRect()
+      // 6px left inset keeps the resize handle renderer-owned (the native view
+      // would otherwise sit on top of it and eat the mousedown).
       window.cockpit.browser.setBounds(paneId, {
-        x: r.left,
+        x: r.left + 6,
         y: r.top,
-        width: r.width,
+        width: Math.max(0, r.width - 6),
         height: r.height
       })
     }
@@ -69,7 +99,8 @@ export function BrowserPanel({ paneId, onClose }: Props): JSX.Element {
   }
 
   return (
-    <div className="browser-panel">
+    <div className="browser-panel" style={{ width, minWidth: 300 }}>
+      <div className="v-resizer browser-edge" onMouseDown={startResize} title="Drag to resize" />
       <div className="browser-tabs">
         {tabs.map((t) => (
           <div

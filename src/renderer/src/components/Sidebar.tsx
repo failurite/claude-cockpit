@@ -30,6 +30,10 @@ interface Props {
   /** Start (or focus) the dedicated session for a GitHub issue. */
   onStartIssue: (workspaceId: string, number: number) => void
   onOpenSettings: () => void
+  /** Current width in px (user-resizable via the drag handle in App). */
+  width: number
+  /** Collapse the sidebar to a thin rail. */
+  onCollapse: () => void
 }
 
 export function Sidebar({
@@ -45,7 +49,9 @@ export function Sidebar({
   onEditWorkspace,
   onDeleteWorkspace,
   onStartIssue,
-  onOpenSettings
+  onOpenSettings,
+  width,
+  onCollapse
 }: Props): JSX.Element {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
@@ -146,10 +152,13 @@ export function Sidebar({
   )
 
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" style={{ width, minWidth: width }}>
       <div className="sidebar-head">
         <span className="brand">claude-cockpit</span>
         <div className="head-actions">
+          <button className="new-btn" title="Hide sidebar" onClick={onCollapse}>
+            «
+          </button>
           <button className="new-btn" title="Settings" onClick={onOpenSettings}>
             ⚙
           </button>

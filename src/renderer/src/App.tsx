@@ -29,6 +29,38 @@ export default function App(): JSX.Element {
   // Which panes currently show their embedded browser (auto-opens on first tab).
   const [browserOpen, setBrowserOpen] = useState<Record<string, boolean>>({})
 
+  // Sidebar width + collapsed state, persisted across launches.
+  const [sbWidth, setSbWidth] = useState(() => {
+    const w = Number(localStorage.getItem('sidebarWidth'))
+    return w >= 180 && w <= 520 ? w : 248
+  })
+  const [sbCollapsed, setSbCollapsed] = useState(
+    () => localStorage.getItem('sidebarCollapsed') === '1'
+  )
+  useEffect(() => localStorage.setItem('sidebarWidth', String(sbWidth)), [sbWidth])
+  useEffect(
+    () => localStorage.setItem('sidebarCollapsed', sbCollapsed ? '1' : '0'),
+    [sbCollapsed]
+  )
+  const startSidebarDrag = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault()
+      const startX = e.clientX
+      const startW = sbWidth
+      const move = (ev: MouseEvent): void =>
+        setSbWidth(Math.min(520, Math.max(180, startW + ev.clientX - startX)))
+      const up = (): void => {
+        window.removeEventListener('mousemove', move)
+        window.removeEventListener('mouseup', up)
+        document.body.classList.remove('dragging-h')
+      }
+      window.addEventListener('mousemove', move)
+      window.addEventListener('mouseup', up)
+      document.body.classList.add('dragging-h')
+    },
+    [sbWidth]
+  )
+
   // Initial load + live updates.
   useEffect(() => {
     window.cockpit.listSessions().then((s) => {
@@ -169,21 +201,34 @@ export default function App(): JSX.Element {
 
   return (
     <div className="app">
-      <Sidebar
-        sessions={sessions}
-        workspaces={workspaces}
-        activeId={activeId}
-        onSelect={setActiveId}
-        onClose={closeSession}
-        onRename={renameSession}
-        onNewSession={newSession}
-        onCustomSession={(workspaceId) => setDialog({ kind: 'session-custom', workspaceId })}
-        onNewWorkspace={() => setDialog({ kind: 'workspace-new' })}
-        onEditWorkspace={(ws) => setDialog({ kind: 'workspace-edit', ws })}
-        onDeleteWorkspace={deleteWorkspace}
-        onStartIssue={startIssue}
-        onOpenSettings={() => setSettingsOpen(true)}
-      />
+      {sbCollapsed ? (
+        <div className="sidebar-rail">
+          <button className="new-btn" title="Show sidebar" onClick={() => setSbCollapsed(false)}>
+            »
+          </button>
+        </div>
+      ) : (
+        <>
+          <Sidebar
+            sessions={sessions}
+            workspaces={workspaces}
+            activeId={activeId}
+            onSelect={setActiveId}
+            onClose={closeSession}
+            onRename={renameSession}
+            onNewSession={newSession}
+            onCustomSession={(workspaceId) => setDialog({ kind: 'session-custom', workspaceId })}
+            onNewWorkspace={() => setDialog({ kind: 'workspace-new' })}
+            onEditWorkspace={(ws) => setDialog({ kind: 'workspace-edit', ws })}
+            onDeleteWorkspace={deleteWorkspace}
+            onStartIssue={startIssue}
+            onOpenSettings={() => setSettingsOpen(true)}
+            width={sbWidth}
+            onCollapse={() => setSbCollapsed(true)}
+          />
+          <div className="v-resizer" onMouseDown={startSidebarDrag} title="Drag to resize" />
+        </>
+      )}
       <main className="stage">
         <div className="work">
           <div className="terminals">

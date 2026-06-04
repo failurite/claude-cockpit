@@ -420,7 +420,8 @@ async function startIssueSession(
   return manager.create({
     cwd: worktree,
     command: 'claude',
-    name: `#${number} ${issue.title}`.slice(0, 60),
+    // The #N chip already shows the number — the name is just the title.
+    name: issue.title.slice(0, 60),
     workspaceId,
     options: ws.defaults,
     issue: ref,

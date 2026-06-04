@@ -371,6 +371,12 @@ body {
 .issue-chip.link:hover {
   text-decoration: underline;
 }
+.ws-name.link {
+  cursor: pointer;
+}
+.ws-name.link:hover {
+  text-decoration: underline;
+}
 .statusbar .done-btn {
   background: var(--accent);
   border: none;

@@ -66,6 +66,17 @@ export function Sidebar({
     if (editingId && draft.trim()) onRename(editingId, draft.trim())
     setEditingId(null)
   }
+  /** Open the workspace's repo (origin remote) in the system browser. */
+  const openRepo = async (path: string): Promise<void> => {
+    const st = await window.cockpit.git.status(path)
+    if (!st.remoteUrl) return
+    let url = st.remoteUrl.trim()
+    const ssh = url.match(/^git@([^:]+):(.+?)(\.git)?$/)
+    if (ssh) url = `https://${ssh[1]}/${ssh[2]}`
+    else url = url.replace(/\.git$/, '')
+    if (url.startsWith('https://')) window.cockpit.openExternal(url)
+  }
+
   const toggleCollapse = (id: string): void =>
     setCollapsed((prev) => {
       const next = new Set(prev)
@@ -178,7 +189,11 @@ export function Sidebar({
                 <button className="ws-chevron" onClick={() => toggleCollapse(ws.id)}>
                   {isCollapsed ? '▸' : '▾'}
                 </button>
-                <span className="ws-name" title={ws.path}>
+                <span
+                  className="ws-name link"
+                  title={`${ws.path} · click to open the repo in your browser`}
+                  onClick={() => openRepo(ws.path)}
+                >
                   {ws.name}
                 </span>
                 <button

@@ -23,6 +23,9 @@ export function WorkspaceIssues({ workspaceId, path, sessions, onStart }: Props)
   const [loading, setLoading] = useState(false)
   /** Active label filters; an issue must carry ALL selected labels to show. */
   const [labelFilter, setLabelFilter] = useState<Set<string>>(new Set())
+  /** Which issue's detail is expanded, and a cache of fetched bodies. */
+  const [expanded, setExpanded] = useState<number | null>(null)
+  const [bodies, setBodies] = useState<Record<number, string>>({})
 
   const refresh = async (): Promise<void> => {
     setLoading(true)
@@ -43,6 +46,22 @@ export function WorkspaceIssues({ workspaceId, path, sessions, onStart }: Props)
 
   const sessionFor = (n: number): TerminalSession | undefined =>
     sessions.find((s) => s.issue?.number === n)
+
+  const toggleDetail = async (n: number): Promise<void> => {
+    if (expanded === n) {
+      setExpanded(null)
+      return
+    }
+    setExpanded(n)
+    if (bodies[n] === undefined) {
+      try {
+        const d = await window.cockpit.issues.view(path, n)
+        setBodies((m) => ({ ...m, [n]: d.body?.trim() || '(no description)' }))
+      } catch {
+        setBodies((m) => ({ ...m, [n]: '(failed to load issue body)' }))
+      }
+    }
+  }
 
   const toggleLabel = (l: string): void =>
     setLabelFilter((prev) => {
@@ -93,20 +112,48 @@ export function WorkspaceIssues({ workspaceId, path, sessions, onStart }: Props)
           )}
           {visible.map((i) => {
             const live = sessionFor(i.number)
+            const isOpen = expanded === i.number
             return (
-              <div key={i.number} className="ws-issue" title={`${i.title}\n${i.labels.join(', ')}\n${i.url}`}>
-                <span className="ws-issue-num">#{i.number}</span>
-                <span className="ws-issue-title">{i.title}</span>
-                {live ? (
-                  <span className={`dot ${live.status}`} title={`session: ${live.status}`} />
-                ) : (
-                  <button
-                    className="ws-git-btn"
-                    title="Start a dedicated session in an isolated worktree"
-                    onClick={() => onStart(workspaceId, i.number)}
-                  >
-                    ▶
-                  </button>
+              <div key={i.number}>
+                <div
+                  className={`ws-issue ${isOpen ? 'expanded' : ''}`}
+                  title={`${i.title}\n${i.labels.join(', ')}`}
+                  onClick={() => toggleDetail(i.number)}
+                >
+                  <span className="ws-issue-num">#{i.number}</span>
+                  <span className="ws-issue-title">{i.title}</span>
+                  {live ? (
+                    <span className={`dot ${live.status}`} title={`session: ${live.status}`} />
+                  ) : (
+                    <button
+                      className="ws-git-btn"
+                      title="Start a dedicated session in an isolated worktree"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onStart(workspaceId, i.number)
+                      }}
+                    >
+                      ▶
+                    </button>
+                  )}
+                </div>
+                {isOpen && (
+                  <div className="ws-issue-detail">
+                    {i.labels.length > 0 && (
+                      <div className="ws-issue-detail-labels">{i.labels.join(' · ')}</div>
+                    )}
+                    <div className="ws-issue-detail-body">
+                      {bodies[i.number] ?? 'Loading…'}
+                    </div>
+                    {!live && (
+                      <button
+                        className="ws-git-btn"
+                        onClick={() => onStart(workspaceId, i.number)}
+                      >
+                        ▶ Start session
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             )

@@ -74,6 +74,7 @@ const api: CockpitApi = {
   issues: {
     available: (dir) => ipcRenderer.invoke('issues:available', dir),
     list: (dir) => ipcRenderer.invoke('issues:list', dir),
+    view: (dir, number) => ipcRenderer.invoke('issues:view', dir, number),
     start: (workspaceId, number) => ipcRenderer.invoke('issues:start', workspaceId, number),
     done: (paneId) => ipcRenderer.invoke('issues:done', paneId)
   },

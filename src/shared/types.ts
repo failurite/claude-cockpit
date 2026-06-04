@@ -281,6 +281,8 @@ export interface CockpitApi {
     available(dir: string): Promise<boolean>
     /** Open issues for the repo at `dir`. */
     list(dir: string): Promise<IssueSummary[]>
+    /** Full detail (body included) for one issue — for previewing before starting a session. */
+    view(dir: string, number: number): Promise<{ number: number; title: string; body: string; url: string }>
     /** Create an isolated worktree + branch for an issue and spawn a session in it. */
     start(workspaceId: string, number: number): Promise<TerminalSession>
     /** Finish an issue session: rebase → merge to default branch → push → close issue. */

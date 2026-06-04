@@ -246,6 +246,9 @@ async function bootstrap(): Promise<void> {
   // ---- GitHub issues → dedicated sessions ----
   ipcMain.handle('issues:available', (_e, dir: string) => ghAvailable(expandTilde(dir)))
   ipcMain.handle('issues:list', (_e, dir: string) => listIssues(expandTilde(dir)))
+  ipcMain.handle('issues:view', (_e, dir: string, number: number) =>
+    viewIssue(expandTilde(dir), number)
+  )
   ipcMain.handle('issues:start', (_e, workspaceId: string, number: number) =>
     startIssueSession(workspaceId, number)
   )
@@ -388,7 +391,9 @@ async function startIssueSession(
   const existing = manager
     .list()
     .find((s) => s.issue && s.issue.repoDir === repoDir && s.issue.number === number)
-  if (existing) return existing
+  if (existing && existing.status !== 'exited') return existing
+  // A dead pane for this issue (e.g. a failed launch) gets replaced, not reused.
+  if (existing) manager.close(existing.id)
 
   const issue = await viewIssue(repoDir, number)
   const { worktree, branch } = await createIssueWorktree(repoDir, number, issue.title)

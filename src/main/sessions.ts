@@ -187,10 +187,12 @@ export class SessionManager extends EventEmitter {
         command === 'claude'
           ? [
               'claude',
+              // Kickoff prompt (e.g. issue context) — only on first launch, not on
+              // resume. It MUST precede the flags: `--mcp-config <configs...>` is
+              // variadic and would swallow a trailing positional as a config path.
+              ...(opts?.initialPrompt && !opts?.resumeId ? [sq(opts.initialPrompt)] : []),
               ...claudeFlags(options, this.browser.mcpConfig),
-              ...(opts?.resumeId ? ['--resume', opts.resumeId] : []),
-              // Kickoff prompt (e.g. issue context) — only on first launch, not resume.
-              ...(opts?.initialPrompt && !opts?.resumeId ? [sq(opts.initialPrompt)] : [])
+              ...(opts?.resumeId ? ['--resume', opts.resumeId] : [])
             ]
           : [command]
       launch = parts.join(' ')

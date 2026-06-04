@@ -320,6 +320,39 @@ body {
 .ws-issues-note {
   font-size: 10px;
 }
+.ws-issue {
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 1px 2px;
+}
+.ws-issue:hover,
+.ws-issue.expanded {
+  background: #1b1f29;
+}
+.ws-issue-detail {
+  margin: 2px 0 6px 14px;
+  padding: 6px 8px;
+  border-left: 2px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ws-issue-detail-labels {
+  color: var(--accent);
+  font-size: 10px;
+}
+.ws-issue-detail-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 180px;
+  overflow-y: auto;
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.ws-issue-detail .ws-git-btn {
+  align-self: flex-start;
+}
 .ws-issues-refresh {
   align-self: flex-start;
   margin-top: 2px;

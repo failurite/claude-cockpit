@@ -364,6 +364,12 @@ body {
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
+.issue-chip.link {
+  cursor: pointer;
+}
+.issue-chip.link:hover {
+  text-decoration: underline;
+}
 .statusbar .done-btn {
   background: var(--accent);
   border: none;

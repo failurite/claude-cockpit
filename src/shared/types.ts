@@ -245,6 +245,8 @@ export interface CockpitApi {
   }
   /** Info about the app itself (e.g. whether the dev repo is available, repo path). */
   appInfo(): Promise<AppInfo>
+  /** Open an https URL in the system browser (e.g. an issue on GitHub). */
+  openExternal(url: string): void
   /** Persist state and relaunch the app, optionally rebuilding first. Restores sessions on boot. */
   relaunchApp(opts?: { rebuild?: boolean }): Promise<{ ok: boolean; message?: string }>
   /** Visibility + cleanup for cockpit-owned tmux sessions (avoids rogue background sessions). */

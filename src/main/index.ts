@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, nativeImage } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, nativeImage, shell } from 'electron'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { existsSync } from 'fs'
@@ -10,7 +10,7 @@ import { BrowserManager } from './browser.js'
 import { startBrowserRpc, type BrowserRpcServer } from './browser-rpc.js'
 import { gitStatus, gitPush, gitPull } from './git.js'
 import { ghAvailable, listIssues, viewIssue, closeIssue } from './issues.js'
-import { createIssueWorktree, finishIssueWorktree, worktreeRoot } from './worktrees.js'
+import { createIssueWorktree, finishIssueWorktree } from './worktrees.js'
 import type { IssueDoneResult, IssueRef } from '../shared/types.js'
 import { initStore, getFlag, setFlag, getWorkspaces, saveWorkspaces } from './store.js'
 import { hookStatus, installHooks, uninstallHooks } from './hooks-install.js'
@@ -217,6 +217,10 @@ async function bootstrap(): Promise<void> {
   ipcMain.handle('hooks:uninstall', () => uninstallHooks(emitScriptPath()))
   ipcMain.handle('sessions:create-dev', () => createDevSession())
   ipcMain.handle('app:info', () => appInfo())
+  // External links (e.g. the issue chip → GitHub). https only, as a guard.
+  ipcMain.on('app:open-external', (_e, url: string) => {
+    if (/^https:\/\//.test(url)) void shell.openExternal(url)
+  })
   ipcMain.handle('app:relaunch', (_e, opts) => relaunchApp(opts))
   ipcMain.handle('tmux:available', () => isTmuxAvailable())
   ipcMain.handle('tmux:list', () => listCockpitSessions())
@@ -398,17 +402,20 @@ async function startIssueSession(
   const issue = await viewIssue(repoDir, number)
   const { worktree, branch } = await createIssueWorktree(repoDir, number, issue.title)
 
-  // Issue body lives BESIDE the worktree so it can never be committed by accident.
-  const bodyFile = join(worktreeRoot(repoDir), `issue-${number}.md`)
-  writeFileSync(bodyFile, `# #${issue.number} ${issue.title}\n\n${issue.body || '(no body)'}\n\n${issue.url}\n`)
-
   const ref: IssueRef = { number, title: issue.title, url: issue.url, branch, worktree, repoDir }
+  // The session gets the ENTIRE issue context inline, and plans before implementing.
+  const comments = issue.comments.length
+    ? `\n\nIssue comments:\n${issue.comments.map((c) => `[${c.author}]\n${c.body}`).join('\n\n')}`
+    : ''
   const prompt =
-    `You are working on GitHub issue #${number}: "${issue.title}". ` +
-    `The full issue body is in ${bodyFile} — read it first (do not commit it; it lives outside the repo). ` +
-    `This directory is an isolated git worktree on branch ${branch}; the default branch is merged separately. ` +
-    `Implement the issue, verify your work, and commit it here with clear messages. ` +
-    `When everything is committed and ready, say so — the user will press Done to merge and close the issue.`
+    `You are working on GitHub issue #${number}: "${issue.title}" (${issue.url}).\n\n` +
+    `Issue body:\n${issue.body.trim() || '(no description)'}${comments}\n\n` +
+    `This directory is an isolated git worktree on branch ${branch}; ` +
+    `your work is merged to the default branch separately when the user presses Done.\n\n` +
+    `First: analyze the issue and present a concise plan — approach, files you expect to touch, ` +
+    `and any risks or open questions. Wait for my confirmation before implementing. ` +
+    `Once implemented and verified, commit everything here with clear messages and say it's ready — ` +
+    `the user will press Done to merge and close the issue.`
 
   return manager.create({
     cwd: worktree,

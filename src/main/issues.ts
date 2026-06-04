@@ -49,13 +49,38 @@ export async function listIssues(dir: string): Promise<IssueSummary[]> {
   }))
 }
 
-/** Full detail for one issue (body included, for the session's kickoff context). */
+/** Full detail for one issue — body + comments, for the session's kickoff context. */
 export async function viewIssue(
   dir: string,
   number: number
-): Promise<{ number: number; title: string; body: string; url: string }> {
-  const r = await gh(dir, ['issue', 'view', String(number), '--json', 'number,title,body,url'])
-  return JSON.parse(r.stdout)
+): Promise<{
+  number: number
+  title: string
+  body: string
+  url: string
+  comments: { author: string; body: string }[]
+}> {
+  const r = await gh(dir, [
+    'issue', 'view', String(number),
+    '--json', 'number,title,body,url,comments'
+  ])
+  const raw = JSON.parse(r.stdout) as {
+    number: number
+    title: string
+    body: string
+    url: string
+    comments?: Array<{ author?: { login?: string }; body?: string }>
+  }
+  return {
+    number: raw.number,
+    title: raw.title,
+    body: raw.body ?? '',
+    url: raw.url,
+    comments: (raw.comments ?? []).map((c) => ({
+      author: c.author?.login ?? 'unknown',
+      body: c.body ?? ''
+    }))
+  }
 }
 
 /** Close an issue with a closing comment (the Done flow's last step). */

@@ -52,6 +52,7 @@ const api: CockpitApi = {
     remove: (id) => ipcRenderer.invoke('workspaces:remove', id)
   },
   appInfo: () => ipcRenderer.invoke('app:info'),
+  openExternal: (url) => ipcRenderer.send('app:open-external', url),
   relaunchApp: (opts) => ipcRenderer.invoke('app:relaunch', opts),
   tmux: {
     available: () => ipcRenderer.invoke('tmux:available'),

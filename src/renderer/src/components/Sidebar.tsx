@@ -99,7 +99,14 @@ export function Sidebar({
               </span>
             )}
             {s.issue && (
-              <span className="issue-chip" title={`${s.issue.url} · branch ${s.issue.branch}`}>
+              <span
+                className="issue-chip link"
+                title={`Open on GitHub · branch ${s.issue.branch}`}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  window.cockpit.openExternal(s.issue!.url)
+                }}
+              >
                 #{s.issue.number}
               </span>
             )}

@@ -58,6 +58,26 @@ export function enableMouse(name: string): void {
   }
 }
 
+/**
+ * The `claude …` command the live dev tmux session was started with, or null if
+ * it isn't running. `new-session -A` re-attach ignores flags, so a long-lived
+ * session keeps its original command — we compare against this to detect drift.
+ */
+export function devSessionStartCommand(): string | null {
+  const bin = tmuxBin()
+  if (!bin) return null
+  try {
+    const out = execFileSync(
+      bin,
+      ['list-panes', '-t', DEV_TMUX_NAME, '-F', '#{pane_start_command}'],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }
+    ).trim()
+    return out.split('\n')[0] || null
+  } catch {
+    return null // session not running
+  }
+}
+
 /** Names of currently-live cockpit-owned tmux sessions (empty if no server). */
 export function listCockpitSessions(): string[] {
   const bin = tmuxBin()

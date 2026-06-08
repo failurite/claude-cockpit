@@ -13,7 +13,15 @@ import {
   type PersistedSession
 } from './store.js'
 import { watchTranscriptForSession } from './transcripts.js'
-import { isTmuxAvailable, devLaunchCommand, enableMouse, sq, DEV_TMUX_NAME } from './tmux.js'
+import {
+  isTmuxAvailable,
+  devLaunchCommand,
+  devSessionStartCommand,
+  killCockpitSession,
+  enableMouse,
+  sq,
+  DEV_TMUX_NAME
+} from './tmux.js'
 import type { IssueRef } from '../shared/types.js'
 import { COCKPIT_WORKSPACE_ID } from '../shared/types.js'
 
@@ -171,6 +179,14 @@ export class SessionManager extends EventEmitter {
     if (tmuxDev) {
       const existing = this.panes.get(DEV_TMUX_NAME)
       if (existing) return existing.session
+      // Flag drift: `new-session -A` re-attach ignores flags, so a long-lived dev
+      // session keeps whatever it was first created with (e.g. a stale `--chrome`
+      // that opens EXTERNAL Chrome instead of the embedded browser). If the live
+      // session's command differs from what we'd launch now, kill it so the
+      // attach-or-create below recreates it fresh with the current flags.
+      const desiredCmd = ['claude', ...claudeFlags(options)].join(' ').trim()
+      const liveCmd = devSessionStartCommand()
+      if (liveCmd && liveCmd !== desiredCmd) killCockpitSession(DEV_TMUX_NAME)
     }
     const id = tmuxDev ? DEV_TMUX_NAME : `pane-${++seq}-${Date.now().toString(36)}`
     const nameKey = `${cwd}::${command}`

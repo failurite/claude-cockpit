@@ -39,6 +39,14 @@ interface Pane {
 
 let seq = 0
 
+/** Canonical options for the Cockpit Dev session: plain `claude`, no browser. */
+const DEV_SESSION_OPTIONS: SessionOptions = {
+  dangerouslySkipPermissions: false,
+  chrome: false,
+  externalChrome: false,
+  extraArgs: ''
+}
+
 /**
  * Expand a leading `~` to the user's home dir. The OS never expands tilde, so a
  * cwd like `~/code/house` (e.g. a workspace path typed by hand) would make
@@ -167,7 +175,11 @@ export class SessionManager extends EventEmitter {
     const cwd = expandTilde(opts?.cwd || homedir())
     const command = opts?.command || 'claude'
     const kind = opts?.kind || 'normal'
-    const options: SessionOptions = { ...DEFAULT_SESSION_OPTIONS, ...opts?.options }
+    // The dev session is special: ALWAYS plain `claude` (no browser), regardless
+    // of stale persisted options — otherwise a dev session first created with
+    // chrome:true would keep opening external Chrome forever.
+    const options: SessionOptions =
+      kind === 'dev' ? { ...DEV_SESSION_OPTIONS } : { ...DEFAULT_SESSION_OPTIONS, ...opts?.options }
     // Dev sessions always live in the built-in Cockpit workspace (also migrates
     // panes persisted before that workspace existed).
     const workspaceId = kind === 'dev' ? COCKPIT_WORKSPACE_ID : (opts?.workspaceId ?? null)

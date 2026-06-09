@@ -67,12 +67,19 @@ export function expandTilde(p: string): string {
 function claudeFlags(options: SessionOptions, browserMcpConfig?: string | null): string[] {
   const flags: string[] = []
   if (options.dangerouslySkipPermissions) flags.push('--dangerously-skip-permissions')
-  if (options.chrome) {
-    // Embedded by default; only use external Chrome when explicitly opted in (or
-    // if no embedded config is available as a fallback). JSON.stringify quotes the
-    // path so spaces (e.g. "Application Support") survive the shell `exec`.
-    if (!options.externalChrome && browserMcpConfig) flags.push('--mcp-config', JSON.stringify(browserMcpConfig))
-    else flags.push('--chrome')
+  // External Chrome is the ONLY path that uses Claude's native Claude-in-Chrome
+  // connector; opt in explicitly, or fall back to it if no embedded config exists.
+  const useExternalChrome = options.chrome && (options.externalChrome || !browserMcpConfig)
+  if (useExternalChrome) {
+    flags.push('--chrome')
+  } else {
+    // Embedded browsing (or no browser at all): force `--no-chrome` so a globally
+    // enabled connector (claudeInChromeDefaultEnabled) can't pop open a real
+    // Chrome window. Sessions browse only via Cockpit's embedded WebContentsView,
+    // wired through the cockpit-browser MCP. JSON.stringify quotes the path so
+    // spaces (e.g. "Application Support") survive the shell `exec`.
+    flags.push('--no-chrome')
+    if (options.chrome && browserMcpConfig) flags.push('--mcp-config', JSON.stringify(browserMcpConfig))
   }
   const extra = options.extraArgs.trim()
   if (extra) flags.push(extra)

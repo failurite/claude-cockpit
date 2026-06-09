@@ -22,7 +22,8 @@ interface Props {
 function previewCommand(o: SessionOptions): string {
   const parts = ['claude']
   if (o.dangerouslySkipPermissions) parts.push('--dangerously-skip-permissions')
-  if (o.chrome) parts.push(o.externalChrome ? '--chrome' : '--mcp-config <cockpit-browser>')
+  if (o.chrome && o.externalChrome) parts.push('--chrome')
+  else parts.push(...(o.chrome ? ['--no-chrome', '--mcp-config <cockpit-browser>'] : ['--no-chrome']))
   if (o.extraArgs.trim()) parts.push(o.extraArgs.trim())
   return parts.join(' ')
 }

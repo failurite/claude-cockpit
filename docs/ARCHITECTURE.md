@@ -153,10 +153,15 @@ claude (pane)  ──spawns──►  mcp/cockpit-browser.mjs   (stdio MCP serve
 ```
 
 - **Launch wiring:** with `options.chrome` on (default), `claudeFlags()` emits
-  `--mcp-config <userData>/cockpit-browser.mcp.json` instead of `--chrome`. The
-  config registers `mcp/cockpit-browser.mjs` (shipped as an extraResource, like
-  `hooks/`). Opting into `options.externalChrome` (LaunchDialog) restores the old
-  `--chrome` behavior for that session.
+  `--no-chrome --mcp-config <userData>/cockpit-browser.mcp.json` instead of
+  `--chrome`. The config registers `mcp/cockpit-browser.mjs` (shipped as an
+  extraResource, like `hooks/`). `--no-chrome` is the key: it disables Claude's
+  native Claude-in-Chrome connector (which is on by default globally via
+  `claudeInChromeDefaultEnabled`), so a session can't pop open a real external
+  Chrome window — it browses only through the embedded WebContentsView. Every
+  non-external path (including no-browser sessions like the dev pane) gets
+  `--no-chrome`. Opting into `options.externalChrome` (LaunchDialog) restores the
+  old `--chrome` behavior for that session.
 - **Tools exposed to Claude:** `browser_open_tab / navigate / list_tabs /
   close_tab / click / type / read_text / screenshot`.
 - **Driving:** v1 uses Electron's high-level APIs (`loadURL`,

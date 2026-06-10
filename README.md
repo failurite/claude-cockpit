@@ -34,6 +34,9 @@ work, and which is done. `claude-cockpit` gives you:
   Claude opens and drives tabs *inside Cockpit* (not an external Chrome window),
   with a tab strip, URL bar, persistent login profile, and tabs that survive
   restarts. External Chrome is still available as an opt-in.
+- **Cross-session awareness** — a session can list its sibling sessions and read
+  a digest of another's context (recent prompts, progress, files it's editing) to
+  coordinate on related bugs, via a Cockpit-owned MCP server.
 - **Per-workspace git** — branch, ↑unpushed / ↓unpulled counts, a dirty marker,
   and manual Pull / Push right in the sidebar.
 - **Persistence & restore** — close and reopen Cockpit and your sessions come
@@ -95,6 +98,19 @@ work, and which is done. `claude-cockpit` gives you:
 - **External Chrome opt-in:** tick *"Use external Chrome instead"* in the advanced
   startup config to use real Chrome / `claude-in-chrome` for that session.
 
+### Cross-session awareness
+- Every normal session also launches with a second `--mcp-config
+  <cockpit-sessions>`, giving Claude two read-only tools:
+  - `cockpit_list_sessions` — the other open sessions, each with its workspace,
+    GitHub issue/branch, working dir, live status, and sub-agent count.
+  - `cockpit_read_session` — resolve a sibling by name, `#issue`, or id and read a
+    digest of its context: recent human prompts, latest progress, and the files
+    it has been editing.
+- It's **observe-only** — a session can consult a related one to keep work
+  coordinated (e.g. two linked bugs) without interrupting or messaging it. The
+  digest is a bounded read of the target's transcript; nothing is scraped from the
+  terminal.
+
 ### Issue-driven sessions (GitHub)
 - Each workspace shows its repo's **open GitHub issues** (via the `gh` CLI —
   Cockpit reuses your existing auth, never stores tokens).
@@ -133,6 +149,8 @@ points (hooks, transcripts, MCP).
 │                                                                           │
 │  BrowserManager ── WebContentsView tabs per pane, driven via CDP/JS       │
 │  Browser RPC (:47616) ◄────────────── cockpit-browser MCP shim (per pane) │
+│  Sessions RPC (:47617) ◄───────────── cockpit-sessions MCP shim (per pane)│
+│        list siblings / read another session's context digest              │
 │                                                                           │
 │  Transcript watcher ── tails ~/.claude/projects/*.jsonl → sub-agent count │
 │  git.ts ── status / push / pull per workspace dir                         │
@@ -203,6 +221,8 @@ signing prompts**. Push only **source** to GitHub — build artifacts never go t
 - [x] **Session persistence / restore** (`claude --resume`), tmux-backed dev session.
 - [x] **Embedded per-session browser** (WebContentsView + a Cockpit-owned MCP
       server), persistent login profile, tab persistence, external-Chrome opt-in.
+- [x] **Cross-session awareness** — a session can list siblings and read another
+      session's context digest (Cockpit-owned MCP server) to coordinate work.
 - [x] **Per-workspace git** status + push/pull.
 - [x] **Issue-driven sessions** — per-issue worktrees + branches, concurrent
       work, Done flow (rebase → merge → push → close issue).

@@ -63,8 +63,14 @@ export function expandTilde(p: string): string {
  * Map session options to `claude` CLI flags (order is stable for readability).
  * When `browserMcpConfig` is given, the "chrome" option wires Cockpit's embedded
  * browser (a per-session MCP server) instead of `--chrome` (external Chrome).
+ * `sessionsMcpConfig`, when given, registers the cross-session MCP server so this
+ * session can see/read its siblings — always on for normal sessions.
  */
-function claudeFlags(options: SessionOptions, browserMcpConfig?: string | null): string[] {
+function claudeFlags(
+  options: SessionOptions,
+  browserMcpConfig?: string | null,
+  sessionsMcpConfig?: string | null
+): string[] {
   const flags: string[] = []
   if (options.dangerouslySkipPermissions) flags.push('--dangerously-skip-permissions')
   // External Chrome is the ONLY path that uses Claude's native Claude-in-Chrome
@@ -81,6 +87,9 @@ function claudeFlags(options: SessionOptions, browserMcpConfig?: string | null):
     flags.push('--no-chrome')
     if (options.chrome && browserMcpConfig) flags.push('--mcp-config', JSON.stringify(browserMcpConfig))
   }
+  // Cross-session visibility is independent of browsing — a separate --mcp-config
+  // occurrence (Claude merges repeated flags), quoted so spaces in the path survive.
+  if (sessionsMcpConfig) flags.push('--mcp-config', JSON.stringify(sessionsMcpConfig))
   const extra = options.extraArgs.trim()
   if (extra) flags.push(extra)
   return flags
@@ -110,7 +119,10 @@ export class SessionManager extends EventEmitter {
       getTabs?: (paneId: string) => { url: string; active: boolean }[]
       /** Reopen a restored pane's embedded-browser tabs. */
       restoreTabs?: (paneId: string, tabs: { url: string; active: boolean }[]) => void
-    } = { mcpConfig: null, port: 0 }
+    } = { mcpConfig: null, port: 0 },
+    /** Cross-session MCP wiring: the shared --mcp-config path + the RPC port the
+     *  cockpit-sessions shim reaches (env-injected, like the browser one). */
+    private sessions: { mcpConfig: string | null; port: number } = { mcpConfig: null, port: 0 }
   ) {
     super()
   }
@@ -226,7 +238,7 @@ export class SessionManager extends EventEmitter {
               // resume. It MUST precede the flags: `--mcp-config <configs...>` is
               // variadic and would swallow a trailing positional as a config path.
               ...(opts?.initialPrompt && !opts?.resumeId ? [sq(opts.initialPrompt)] : []),
-              ...claudeFlags(options, this.browser.mcpConfig),
+              ...claudeFlags(options, this.browser.mcpConfig, this.sessions.mcpConfig),
               ...(opts?.resumeId ? ['--resume', opts.resumeId] : [])
             ]
           : [command]
@@ -250,7 +262,10 @@ export class SessionManager extends EventEmitter {
         CLAUDE_COCKPIT_INGEST_PORT: String(this.ingestPort),
         // The cockpit-browser MCP shim (spawned by claude) inherits this to reach
         // the app's browser RPC endpoint, scoped to this pane.
-        CLAUDE_COCKPIT_BROWSER_PORT: String(this.browser.port)
+        CLAUDE_COCKPIT_BROWSER_PORT: String(this.browser.port),
+        // The cockpit-sessions MCP shim inherits this to reach the app's
+        // cross-session RPC endpoint (list/read sibling sessions), scoped to this pane.
+        CLAUDE_COCKPIT_SESSIONS_PORT: String(this.sessions.port)
       } as Record<string, string>
     })
 

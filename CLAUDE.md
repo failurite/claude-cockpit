@@ -10,7 +10,9 @@ window: workspaces (folder + default launch options), a side panel with each
 session's live status (idle / working / waiting), sub-agent counts, per-workspace
 git status + push/pull, and an **embedded per-session browser** Claude drives via
 a Cockpit-owned MCP server (🌐 badge lights while browsing; external Chrome is a
-per-session opt-in). It embeds the real `claude` TUI per pane (node-pty +
+per-session opt-in). Sessions can also **see each other** — a second MCP server
+lets one session list its siblings and read a digest of another's context to
+coordinate related work. It embeds the real `claude` TUI per pane (node-pty +
 xterm.js) and observes state out-of-band via Claude Code hooks + transcript
 watching — it does **not** reimplement Claude Code.
 
@@ -24,6 +26,8 @@ Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design. Key files
 - `src/main/browser.ts` — `BrowserManager`: per-pane `WebContentsView` tabs,
   drive/observe/screenshot, persistent profile, overlay layout.
 - `src/main/browser-rpc.ts` — localhost RPC (:47616) the browser MCP shim calls.
+- `src/main/sessions-rpc.ts` — localhost RPC (:47617) the cross-session MCP shim
+  calls: list sibling sessions / read another session's transcript digest.
 - `src/main/git.ts` — git status / push / pull for workspace dirs (exports `runGit`).
 - `src/main/issues.ts` — gh CLI wrapper (list/view/close GitHub issues).
 - `src/main/worktrees.ts` — per-issue worktree/branch isolation + the serialized
@@ -41,6 +45,9 @@ Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design. Key files
 - `mcp/cockpit-browser.mjs` — stdio MCP server Claude spawns; forwards browser
   tool calls to the app, tagged with the pane id (keep dependency-free, like
   `emit.mjs`).
+- `mcp/cockpit-sessions.mjs` — stdio MCP server for cross-session coordination
+  (`cockpit_list_sessions` / `cockpit_read_session`); forwards to `sessions-rpc.ts`
+  tagged with the pane id (keep dependency-free, like `emit.mjs`).
 
 ## Conventions
 

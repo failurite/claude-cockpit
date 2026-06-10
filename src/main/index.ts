@@ -8,6 +8,7 @@ import { SessionManager, expandTilde } from './sessions.js'
 import { startIngestServer, type IngestServer } from './ingest.js'
 import { BrowserManager } from './browser.js'
 import { startBrowserRpc, type BrowserRpcServer } from './browser-rpc.js'
+import { startSessionsRpc, type SessionsRpcServer } from './sessions-rpc.js'
 import { gitStatus, gitPush, gitPull } from './git.js'
 import { ghAvailable, listIssues, viewIssue, closeIssue } from './issues.js'
 import { createIssueWorktree, finishIssueWorktree } from './worktrees.js'
@@ -28,6 +29,8 @@ import { COCKPIT_WORKSPACE_ID } from '../shared/types.js'
 const INGEST_PORT = 47615
 /** Fixed browser-RPC port so a session's frozen MCP env keeps reaching us after restarts. */
 const BROWSER_RPC_PORT = 47616
+/** Fixed sessions-RPC port (cross-session visibility); same frozen-env rationale. */
+const SESSIONS_RPC_PORT = 47617
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 /** Project root (out/main/index.js -> ../..). In dev this is the repo; packaged it's the bundle. */
@@ -47,6 +50,7 @@ let manager: SessionManager
 let ingest: IngestServer
 let browserMgr: BrowserManager
 let browserRpc: BrowserRpcServer
+let sessionsRpc: SessionsRpcServer
 /** Set true only on the launch where we auto-installed hooks (for the one-time notice). */
 let hooksJustInstalled = false
 
@@ -77,6 +81,28 @@ function writeBrowserMcpConfig(): string {
     }
   }
   const path = join(app.getPath('userData'), 'cockpit-browser.mcp.json')
+  writeFileSync(path, JSON.stringify(cfg, null, 2))
+  return path
+}
+
+/** Absolute path to the cross-session MCP shim (dev: repo/mcp, prod: resources). */
+function sessionsMcpScriptPath(): string {
+  if (app.isPackaged) return join(process.resourcesPath, 'mcp', 'cockpit-sessions.mjs')
+  return join(__dirname, '..', '..', 'mcp', 'cockpit-sessions.mjs')
+}
+
+/**
+ * Write (once per launch) the `--mcp-config` file registering the cockpit-sessions
+ * MCP server, handed to every normal session so it can see/read its siblings. The
+ * shim learns its pane id + RPC port from inherited pty env, so this config is shared.
+ */
+function writeSessionsMcpConfig(): string {
+  const cfg = {
+    mcpServers: {
+      'cockpit-sessions': { command: 'node', args: [sessionsMcpScriptPath()] }
+    }
+  }
+  const path = join(app.getPath('userData'), 'cockpit-sessions.mcp.json')
   writeFileSync(path, JSON.stringify(cfg, null, 2))
   return path
 }
@@ -175,12 +201,21 @@ async function bootstrap(): Promise<void> {
   browserRpc = await startBrowserRpc(browserMgr, BROWSER_RPC_PORT)
   const browserMcpConfig = writeBrowserMcpConfig()
 
-  manager = new SessionManager(ingest.port, {
-    mcpConfig: browserMcpConfig,
-    port: browserRpc.port,
-    getTabs: (paneId) => browserMgr.listTabs(paneId).map((t) => ({ url: t.url, active: t.active })),
-    restoreTabs: (paneId, tabs) => void browserMgr.restoreTabs(paneId, tabs)
-  })
+  // Cross-session visibility: an RPC the cockpit-sessions shim calls to list/read
+  // siblings. Started before the manager exists, so it reads the list lazily.
+  sessionsRpc = await startSessionsRpc(() => manager?.list() ?? [], SESSIONS_RPC_PORT)
+  const sessionsMcpConfig = writeSessionsMcpConfig()
+
+  manager = new SessionManager(
+    ingest.port,
+    {
+      mcpConfig: browserMcpConfig,
+      port: browserRpc.port,
+      getTabs: (paneId) => browserMgr.listTabs(paneId).map((t) => ({ url: t.url, active: t.active })),
+      restoreTabs: (paneId, tabs) => void browserMgr.restoreTabs(paneId, tabs)
+    },
+    { mcpConfig: sessionsMcpConfig, port: sessionsRpc.port }
+  )
 
   manager.on('data', (paneId: string, chunk: string) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -603,6 +638,7 @@ app.on('window-all-closed', () => {
   manager?.disposeAll()
   ingest?.close()
   browserRpc?.close()
+  sessionsRpc?.close()
   if (process.platform !== 'darwin') app.quit()
 })
 
@@ -613,4 +649,5 @@ app.on('before-quit', () => {
   manager?.disposeAll()
   ingest?.close()
   browserRpc?.close()
+  sessionsRpc?.close()
 })

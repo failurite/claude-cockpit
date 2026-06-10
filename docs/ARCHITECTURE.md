@@ -33,9 +33,12 @@ src/
 │   ├── browser.ts            BrowserManager: per-pane WebContentsView tabs,
 │   │                         drive (navigate/click/type/read/screenshot), layout
 │   ├── browser-rpc.ts        localhost RPC (:47616) the MCP shim calls
+│   ├── sessions-rpc.ts       localhost RPC (:47617) the cross-session MCP shim
+│   │                         calls: list siblings / read a session's digest
 │   ├── git.ts                git status / push / pull per workspace dir
 │   ├── tmux.ts               persistent tmux backing for the dev session
-│   ├── transcripts.ts        chokidar watcher → active sub-agent count
+│   ├── transcripts.ts        chokidar watcher → active sub-agent count;
+│   │                         sessionDigest() → another session's context summary
 │   ├── hooks-install.ts      read/modify ~/.claude/settings.json (managed block)
 │   ├── updater.ts            electron-updater wiring (dormant; GitHub Releases)
 │   └── store.ts              JSON persistence: names, panes (+ browser tabs),
@@ -57,8 +60,10 @@ src/
 ├── hooks/
 │   └── emit.mjs              the hook handler Claude runs; POSTs events to the app
 └── mcp/
-    └── cockpit-browser.mjs   stdio MCP server Claude spawns; forwards browser
-                              tool calls to the app's RPC, tagged with its pane id
+    ├── cockpit-browser.mjs   stdio MCP server Claude spawns; forwards browser
+    │                         tool calls to the app's RPC, tagged with its pane id
+    └── cockpit-sessions.mjs  stdio MCP server: cockpit_list_sessions /
+                              cockpit_read_session → cross-session coordination
 ```
 
 ### Data flow
@@ -178,6 +183,38 @@ claude (pane)  ──spawns──►  mcp/cockpit-browser.mjs   (stdio MCP serve
   as `usingChrome` when a `PreToolUse` event carries a browser MCP tool
   (`isBrowserTool`/`browserToolTarget` in `main/index.ts`) and clears it on
   `Stop` — that's what lights the 🌐 badge, for embedded and external alike.
+
+## Cross-session visibility
+
+Sessions are isolated (separate ptys, worktrees, transcripts), but related bugs
+often need coordination, so every normal session gets a second MCP server that
+lets it *look at* its siblings — read-only, it never interrupts or messages them.
+
+```
+claude (pane)  ──spawns──►  mcp/cockpit-sessions.mjs   (stdio MCP server)
+                              │  same shim pattern as cockpit-browser; tags every
+                              │  call with CLAUDE_COCKPIT_PANE_ID (to exclude self)
+                              ▼
+              Sessions RPC server (127.0.0.1:47617, sessions-rpc.ts)
+                              ▼
+              SessionManager.list()  +  transcripts.sessionDigest()
+```
+
+- **Launch wiring:** `claudeFlags()` always appends a second
+  `--mcp-config <userData>/cockpit-sessions.mcp.json` for normal sessions
+  (Claude merges repeated `--mcp-config` flags), independent of the browser
+  choice. The dev session is excluded. The shim reaches the app via
+  `CLAUDE_COCKPIT_SESSIONS_PORT` (fixed `:47617`, frozen-env-safe like the browser
+  port).
+- **Tools exposed to Claude:** `cockpit_list_sessions` (siblings with workspace,
+  issue/branch, cwd, live status, sub-agent count) and `cockpit_read_session`
+  (resolve a sibling by name / `#issue` / id → a digest of its recent human
+  prompts, latest progress, and the files it has been editing).
+- **The digest** (`transcripts.sessionDigest`) is a bounded on-disk read of the
+  target's `~/.claude/projects/*.jsonl`: real human prompts only (tool_result and
+  meta lines filtered out), the last assistant narrative, and de-duped
+  `Edit/Write/MultiEdit/NotebookEdit` file paths — so a session can see what a
+  related one is touching and avoid stepping on it.
 
 ## Issue-driven sessions
 

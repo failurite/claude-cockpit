@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { IssueSummary, TerminalSession } from '../../../shared/types'
 
 interface Props {
@@ -9,6 +9,8 @@ interface Props {
   sessions: TerminalSession[]
   /** Start (or focus) the dedicated session for an issue. */
   onStart: (workspaceId: string, number: number) => void
+  /** Changes when an external event (e.g. a Done merge) should re-fetch the list. */
+  refreshSignal: number
 }
 
 /**
@@ -16,7 +18,13 @@ interface Props {
  * CLI, each with a ▶ button that spawns an isolated worktree + dedicated
  * session. Issues that already have a session show its live status instead.
  */
-export function WorkspaceIssues({ workspaceId, path, sessions, onStart }: Props): JSX.Element {
+export function WorkspaceIssues({
+  workspaceId,
+  path,
+  sessions,
+  onStart,
+  refreshSignal
+}: Props): JSX.Element {
   const [open, setOpen] = useState(false)
   const [issues, setIssues] = useState<IssueSummary[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -43,6 +51,14 @@ export function WorkspaceIssues({ workspaceId, path, sessions, onStart }: Props)
     setOpen(next)
     if (next && issues === null) void refresh()
   }
+
+  // Re-fetch when an external event bumps the signal (e.g. a Done merge closed an
+  // issue) — but only if this list is open and already populated, so we never
+  // fetch for collapsed/never-opened workspaces. Skips the initial mount (key 0).
+  useEffect(() => {
+    if (refreshSignal > 0 && open && issues !== null) void refresh()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshSignal])
 
   const sessionFor = (n: number): TerminalSession | undefined =>
     sessions.find((s) => s.issue?.number === n)

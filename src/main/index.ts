@@ -448,8 +448,19 @@ async function startIssueSession(
     `This directory is an isolated git worktree on branch ${branch}; ` +
     `your work is merged to the default branch separately when the user presses Done.\n\n` +
     `First: analyze the issue and present a concise plan — approach, files you expect to touch, ` +
-    `and any risks or open questions. Wait for my confirmation before implementing. ` +
-    `Once implemented and verified, commit everything here with clear messages and say it's ready — ` +
+    `and any risks or open questions. Wait for my confirmation before implementing.\n\n` +
+    `After implementing, VALIDATE the fix yourself before calling it ready — do whatever you ` +
+    `reasonably can to confirm it actually works, not just that the code looks right: run the ` +
+    `project's build / tests / typecheck if they exist, and exercise the specific behavior the ` +
+    `issue describes. If this is a web app, open it in your embedded browser and visually inspect ` +
+    `the change really works (browser_open_tab / browser_navigate); if it's a desktop or CLI app, ` +
+    `actually run it.\n\n` +
+    `Then leave the fix OPEN and ready for me to review interactively — by default surface the ` +
+    `running result so I can see it immediately: for a web app, load the relevant page in the ` +
+    `embedded browser; for another app, launch it (externally if it can't run embedded). If it ` +
+    `isn't obvious how I'd want to validate or review this change, ASK me how before finishing ` +
+    `rather than guessing.\n\n` +
+    `Once it's validated and committed here with clear messages, say it's ready — ` +
     `the user will press Done to merge and close the issue.`
 
   return manager.create({

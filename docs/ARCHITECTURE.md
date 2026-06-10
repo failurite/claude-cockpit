@@ -230,12 +230,19 @@ GitHub issues become dedicated, concurrent sessions with clean repo sync:
   worktree/repoDir) is set at spawn, shown as a `#<n>` chip, and persisted so
   restarts keep the mapping. The issue body is written *beside* the worktree
   (never committable) and referenced from the kickoff prompt.
+- **Kickoff prompt** (`startIssueSession`): issue context → plan-first → then
+  *validate the fix* (build/tests, and for a web app open it in the embedded
+  browser to visually inspect via the `browser_*` tools) and leave it *open for
+  interactive review* (surface the running result, or ask the user how to
+  validate when that's unclear) before saying it's ready.
 - **Done flow** (`finishIssueWorktree`, serialized through a module-level merge
   queue so only one issue lands at a time): require a clean worktree → fetch →
   `rebase origin/<default>` → `push origin HEAD:refs/heads/<default>` (or local
   `merge --ff-only` when there's no remote) → best-effort `pull --ff-only` in
   the main checkout → `worktree remove` + `branch -D` → `gh issue close
-  --comment` with the merged-commit summary → close the pane.
+  --comment` with the merged-commit summary → close the pane. On success the
+  renderer bumps `issuesRefreshKey`, so each open workspace Issues list re-fetches
+  and the just-closed issue drops off.
 - **Failure handling:** `dirty` and `conflict` results leave the worktree
   intact and Cockpit *types instructions into that session's pty* so its Claude
   commits / resolves the rebase; the user presses Done again.

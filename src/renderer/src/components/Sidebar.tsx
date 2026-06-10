@@ -29,6 +29,8 @@ interface Props {
   onDeleteWorkspace: (id: string) => void
   /** Start (or focus) the dedicated session for a GitHub issue. */
   onStartIssue: (workspaceId: string, number: number) => void
+  /** Incremented after a Done merge so each open Issues list re-fetches. */
+  issuesRefreshKey: number
   onOpenSettings: () => void
   /** Current width in px (user-resizable via the drag handle in App). */
   width: number
@@ -49,6 +51,7 @@ export function Sidebar({
   onEditWorkspace,
   onDeleteWorkspace,
   onStartIssue,
+  issuesRefreshKey,
   onOpenSettings,
   width,
   onCollapse
@@ -256,6 +259,7 @@ export function Sidebar({
                   path={ws.path}
                   sessions={items}
                   onStart={onStartIssue}
+                  refreshSignal={issuesRefreshKey}
                 />
               )}
               {!isCollapsed && (

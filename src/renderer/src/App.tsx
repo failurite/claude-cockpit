@@ -104,6 +104,9 @@ export default function App(): JSX.Element {
   // GitHub-issue sessions: start (or focus) one, and the Done merge flow.
   const [issueBusy, setIssueBusy] = useState(false)
   const [issueMsg, setIssueMsg] = useState<string | null>(null)
+  // Bumped after a successful Done so the workspace Issues lists re-fetch (the
+  // just-merged issue is now closed and should drop off the open-issues list).
+  const [issuesRefreshKey, setIssuesRefreshKey] = useState(0)
   const startIssue = useCallback(async (workspaceId: string, number: number) => {
     try {
       const s = await window.cockpit.issues.start(workspaceId, number)
@@ -117,6 +120,8 @@ export default function App(): JSX.Element {
     setIssueMsg(null)
     const r = await window.cockpit.issues.done(paneId)
     setIssueMsg(r.message)
+    // Merged → the issue is closed on GitHub; refresh the Issues lists to drop it.
+    if (r.ok) setIssuesRefreshKey((k) => k + 1)
     setIssueBusy(false)
   }, [])
   const renameSession = useCallback(
@@ -222,6 +227,7 @@ export default function App(): JSX.Element {
             onEditWorkspace={(ws) => setDialog({ kind: 'workspace-edit', ws })}
             onDeleteWorkspace={deleteWorkspace}
             onStartIssue={startIssue}
+            issuesRefreshKey={issuesRefreshKey}
             onOpenSettings={() => setSettingsOpen(true)}
             width={sbWidth}
             onCollapse={() => setSbCollapsed(true)}

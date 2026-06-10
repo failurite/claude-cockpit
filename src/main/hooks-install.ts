@@ -1,6 +1,7 @@
 import { homedir } from 'os'
 import { join } from 'path'
 import { existsSync, readFileSync, writeFileSync, copyFileSync } from 'fs'
+import { quotePath } from './platform.js'
 
 const SETTINGS = join(homedir(), '.claude', 'settings.json')
 
@@ -22,8 +23,11 @@ export interface HookInstallState {
 }
 
 function hookCommandFor(emitScriptPath: string): string {
-  // process.execPath is Electron; for hooks we want plain node on PATH.
-  return `node ${JSON.stringify(emitScriptPath)}`
+  // process.execPath is Electron; for hooks we want plain node on PATH. quotePath
+  // (not JSON.stringify) so a Windows `C:\…` path keeps single backslashes instead
+  // of being doubled into an invalid path when Claude runs the hook command. On
+  // POSIX quotePath === JSON.stringify, so the stored command string is unchanged.
+  return `node ${quotePath(emitScriptPath)}`
 }
 
 function readSettings(): any {

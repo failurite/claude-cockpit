@@ -36,11 +36,12 @@ src/
 │   ├── sessions-rpc.ts       localhost RPC (:47617) the cross-session MCP shim
 │   │                         calls: list siblings / read a session's digest
 │   ├── git.ts                git status / push / pull per workspace dir
-│   ├── tmux.ts               persistent tmux backing for the dev session
+│   ├── tmux.ts               persistent tmux backing for the dev session (POSIX)
+│   ├── platform.ts           OS choke point: pane shell, arg/path quoting, NPM_BIN
 │   ├── transcripts.ts        chokidar watcher → active sub-agent count;
 │   │                         sessionDigest() → another session's context summary
 │   ├── hooks-install.ts      read/modify ~/.claude/settings.json (managed block)
-│   ├── updater.ts            electron-updater wiring (dormant; GitHub Releases)
+│   ├── updater.ts            electron-updater wiring (launch-time check; GH Releases)
 │   └── store.ts              JSON persistence: names, panes (+ browser tabs),
 │                             workspaces, one-time flags
 ├── preload/
@@ -134,7 +135,16 @@ This is a heuristic and a good place to contribute a more exact implementation
   `claude` process survives app restarts — Cockpit re-attaches with
   `tmux new-session -A`. **Caveat:** `-A` only applies launch flags when the tmux
   session is *first created*; a long-lived tmux session keeps its original flags
-  until killed (Settings → tmux → Kill).
+  until killed (Settings → tmux → Kill). On **Windows** (no tmux) the dev session
+  is an ordinary ephemeral pane that restores via `claude --resume` like any other
+  — no live-process persistence across restarts.
+- **Cross-platform:** `platform.ts` is the single place OS differences live. The
+  per-pane shell is a login `zsh` running `exec <claude …>` on macOS/Linux vs
+  `cmd.exe /c <claude …>` on Windows; arg/path quoting differs (POSIX single-quote
+  vs Windows double-quote, the latter avoiding the backslash-doubling that would
+  corrupt a `C:\…` path on the command line). Builds: `npm run update-app` is local
+  and single-platform; the `release.yml` CI matrix builds macOS + Windows from one
+  commit and publishes to GitHub Releases for auto-update. Windows is unsigned.
 
 ## Embedded browser (implemented)
 

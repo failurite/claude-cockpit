@@ -1,6 +1,6 @@
 {
   "name": "claude-cockpit",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A cockpit for your Claude Code sessions — multi-terminal grid, live status, sub-agent counts, and linked Chrome tabs.",
   "main": "./out/main/index.js",
   "author": "failurite",
@@ -14,8 +14,11 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "dist": "electron-vite build && electron-builder --mac",
     "dist:dir": "electron-vite build && electron-builder --mac dir -c.mac.notarize=false",
+    "dist:win": "electron-vite build && electron-builder --win",
+    "dist:win:dir": "electron-vite build && electron-builder --win dir",
     "release": "electron-vite build && electron-builder --mac --publish always",
-    "update-app": "bash scripts/install-local.sh"
+    "release:win": "electron-vite build && electron-builder --win --publish always",
+    "update-app": "node scripts/update-app.mjs"
   },
   "dependencies": {
     "@homebridge/node-pty-prebuilt-multiarch": "^0.12.0",

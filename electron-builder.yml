@@ -60,6 +60,23 @@ mac:
 dmg:
   artifactName: ${productName}-${version}-${arch}.${ext}
 
+win:
+  # No icon.ico in the repo — electron-builder generates the Windows icon from the
+  # 1024×1024 build/icon.png. Unsigned for now: SmartScreen warns on first run of a
+  # downloaded build (click "More info → Run anyway"); a locally-built one runs free.
+  icon: build/icon.png
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  target:
+    # nsis = the installer; it also emits latest.yml + blockmap for auto-update.
+    - target: nsis
+      arch: [x64]
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
 # Auto-update feed. `npm run release` publishes installers here; the running app
 # checks this repo's Releases for newer versions.
 publish:

@@ -11,6 +11,9 @@ let cachedBin: string | null | undefined
 /** Resolve the tmux binary (absolute path), or null if not installed. */
 export function tmuxBin(): string | null {
   if (cachedBin !== undefined) return cachedBin
+  // No tmux on Windows — short-circuit so we never probe POSIX paths or `which`.
+  // The dev session falls back to the ephemeral + `claude --resume` path instead.
+  if (process.platform === 'win32') return (cachedBin = null)
   for (const p of ['/opt/homebrew/bin/tmux', '/usr/local/bin/tmux', '/usr/bin/tmux']) {
     if (existsSync(p)) return (cachedBin = p)
   }

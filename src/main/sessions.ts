@@ -19,9 +19,9 @@ import {
   devSessionStartCommand,
   killCockpitSession,
   enableMouse,
-  sq,
   DEV_TMUX_NAME
 } from './tmux.js'
+import { buildShellInvocation, quoteArg, quotePath } from './platform.js'
 import type { IssueRef } from '../shared/types.js'
 import { COCKPIT_WORKSPACE_ID } from '../shared/types.js'
 
@@ -82,14 +82,15 @@ function claudeFlags(
     // Embedded browsing (or no browser at all): force `--no-chrome` so a globally
     // enabled connector (claudeInChromeDefaultEnabled) can't pop open a real
     // Chrome window. Sessions browse only via Cockpit's embedded WebContentsView,
-    // wired through the cockpit-browser MCP. JSON.stringify quotes the path so
-    // spaces (e.g. "Application Support") survive the shell `exec`.
+    // wired through the cockpit-browser MCP. quoteArg quotes the path so spaces
+    // (e.g. "Application Support") survive the shell — and, on Windows, without
+    // the backslash-doubling that JSON.stringify would inflict on a `C:\…` path.
     flags.push('--no-chrome')
-    if (options.chrome && browserMcpConfig) flags.push('--mcp-config', JSON.stringify(browserMcpConfig))
+    if (options.chrome && browserMcpConfig) flags.push('--mcp-config', quotePath(browserMcpConfig))
   }
   // Cross-session visibility is independent of browsing — a separate --mcp-config
   // occurrence (Claude merges repeated flags), quoted so spaces in the path survive.
-  if (sessionsMcpConfig) flags.push('--mcp-config', JSON.stringify(sessionsMcpConfig))
+  if (sessionsMcpConfig) flags.push('--mcp-config', quotePath(sessionsMcpConfig))
   const extra = options.extraArgs.trim()
   if (extra) flags.push(extra)
   return flags
@@ -237,7 +238,7 @@ export class SessionManager extends EventEmitter {
               // Kickoff prompt (e.g. issue context) — only on first launch, not on
               // resume. It MUST precede the flags: `--mcp-config <configs...>` is
               // variadic and would swallow a trailing positional as a config path.
-              ...(opts?.initialPrompt && !opts?.resumeId ? [sq(opts.initialPrompt)] : []),
+              ...(opts?.initialPrompt && !opts?.resumeId ? [quoteArg(opts.initialPrompt)] : []),
               ...claudeFlags(options, this.browser.mcpConfig, this.sessions.mcpConfig),
               ...(opts?.resumeId ? ['--resume', opts.resumeId] : [])
             ]
@@ -245,10 +246,10 @@ export class SessionManager extends EventEmitter {
       launch = parts.join(' ')
     }
 
-    const shell = process.env.SHELL || '/bin/zsh'
-    // Login shell so GUI-launched apps still get the user's PATH, then exec the
-    // target so the pane *is* claude (no lingering shell prompt).
-    const args = ['-l', '-c', `exec ${launch}`]
+    // Spawn a shell that runs the launch command so the pane *is* claude with no
+    // lingering prompt. The shell + args differ per OS (login zsh `exec` on POSIX,
+    // `cmd.exe /c` on Windows) — see platform.ts.
+    const { shell, args } = buildShellInvocation(launch)
 
     const proc = pty.spawn(shell, args, {
       name: 'xterm-256color',

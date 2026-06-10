@@ -166,9 +166,10 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design.
 
 ## Install & run (development)
 
-Requirements: macOS, Node 20+, and `claude` on your `PATH`. `tmux`
-(`brew install tmux`) is optional but recommended for a process-persistent dev
-session.
+Requirements: macOS or **Windows** (experimental — see below), Node 20+, and
+`claude` on your `PATH`. On macOS `tmux` (`brew install tmux`) is optional but
+recommended for a process-persistent dev session; Windows has no tmux and falls
+back to `claude --resume` on restart.
 
 ```bash
 git clone https://github.com/failurite/claude-cockpit.git
@@ -191,11 +192,13 @@ Run it from a Desktop icon instead of `npm run dev`, so it no longer dies when y
 exit a Claude session:
 
 ```bash
-npm run update-app    # build + install "Claude Cockpit.app" to your Desktop, then launch it
+npm run update-app    # build + install the app to your Desktop, then launch it
 ```
 
-Double-click **Claude Cockpit** on your Desktop. (Install elsewhere with
-`COCKPIT_APP_PATH=/Applications/...`.)
+`update-app` is cross-platform: it runs `scripts/install-local.sh` on macOS and
+`scripts/install-local.ps1` on Windows (both build, swap the installed app in
+place, and relaunch). Double-click **Claude Cockpit** on your Desktop. (Install
+elsewhere with `COCKPIT_APP_PATH=...`.)
 
 > **Native module note.** `node-pty` is compiled for this Electron version during
 > packaging and needs working Xcode Command Line Tools (`xcode-select --install`).
@@ -214,10 +217,25 @@ sessions and browser tabs are restored). Because the app is built on your machin
 it carries no quarantine flag, so macOS runs it with **no notarization and no
 signing prompts**. Push only **source** to GitHub — build artifacts never go there.
 
-> **Distributing to other machines?** That's the one case for the GitHub-Releases
-> path: `npm run release` plus code signing + notarization, since a *downloaded*
-> app is quarantined. The wiring is in `electron-builder.yml` (`publish:` + the
-> `notarize` block) and `src/main/updater.ts`, dormant until you need it.
+> **Distributing to other machines / both platforms?** Push a version tag
+> (`git tag v0.2.0 && git push origin v0.2.0`) and the
+> [`Release` workflow](.github/workflows/release.yml) builds **macOS *and* Windows
+> from the same commit** on GitHub-hosted runners and publishes both to a GitHub
+> Release. This is what guarantees a feature authored on either OS reaches both
+> platform releases — `update-app` only ever builds the machine it runs on. The
+> running app then auto-updates from that feed (`src/main/updater.ts`). Windows
+> ships **unsigned** for now (SmartScreen warns on first run → *More info → Run
+> anyway*); set the `APPLE_ID` / `APPLE_APP_SPECIFIC_PASSWORD` / `APPLE_TEAM_ID`
+> repo secrets to get a notarized, auto-updating macOS build from CI too.
+
+### Windows (experimental)
+
+Windows support is new and best-effort. Requirements: Node 20+, `claude` on your
+`PATH`, and **`node` reachable on `PATH`** (Cockpit's status hooks and MCP shims
+run as `node …`). The dev session runs without tmux (no process-persistence across
+restarts; conversations restore via `claude --resume`). Install the latest
+(unsigned) build from [Releases](https://github.com/failurite/claude-cockpit/releases),
+or build locally with `npm run update-app`. Please report rough edges.
 
 ## Roadmap
 
@@ -234,7 +252,9 @@ signing prompts**. Push only **source** to GitHub — build artifacts never go t
 - [ ] Split-view / grid layout (more than one terminal visible at once).
 - [ ] Real synthetic input for the embedded browser (CDP `Input.dispatch`),
       background-tab screenshots.
-- [ ] Windows/Linux support (the stack is cross-platform; just untested).
+- [~] **Windows support** (experimental) — platform abstraction for the pane shell,
+      cross-platform `update-app`, and a CI matrix that ships mac + Windows from one
+      commit. Linux still untested.
 
 ## Documentation
 

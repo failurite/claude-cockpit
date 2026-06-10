@@ -69,7 +69,12 @@ export function initUpdater(getWindow: WindowGetter): void {
   )
   autoUpdater.on('error', (e) => set({ state: 'error', message: e.message }))
 
-  // No launch-time check: updates are delivered locally via `npm run update-app`
-  // (rebuild + swap the installed app), not from a GitHub Releases feed. The
-  // "Check for updates" button still works if a feed is ever configured.
+  // Launch-time check against the GitHub Releases feed (populated by the CI matrix
+  // build — see .github/workflows/release.yml). Delayed a few seconds so it never
+  // competes with startup. Windows (NSIS) applies updates even unsigned; an
+  // unsigned/ad-hoc local mac build can't apply them (Squirrel.Mac refuses), so the
+  // check there is a harmless no-op. Local dev still uses `npm run update-app`.
+  setTimeout(() => {
+    autoUpdater.checkForUpdates().catch((e) => set({ state: 'error', message: (e as Error).message }))
+  }, 4000)
 }

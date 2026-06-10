@@ -1,0 +1,69 @@
+# Cross-platform release: build macOS + Windows from the SAME commit and publish
+# both to a GitHub Release. This is what guarantees a feature authored on either OS
+# ships to BOTH platform releases — the local `npm run update-app` loop only ever
+# builds the machine it runs on.
+#
+# Trigger: push a version tag (e.g. `git tag v0.2.0 && git push origin v0.2.0`),
+# or run manually from the Actions tab (workflow_dispatch) to dry-run a build.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write # electron-builder needs this to create/update the GitHub Release
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false # a macOS failure shouldn't block the Windows artifact (and vice-versa)
+      matrix:
+        include:
+          - os: macos-latest
+            platform: mac
+          - os: windows-latest
+            platform: win
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build & publish (Windows)
+        if: matrix.platform == 'win'
+        run: npm run release:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & publish (macOS)
+        if: matrix.platform == 'mac'
+        # Notarize only when Apple creds are present (set APPLE_ID /
+        # APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID as repo secrets to enable
+        # auto-updating signed mac builds). Without them, build un-notarized so CI
+        # stays green — mac users update via `npm run update-app` until creds exist.
+        shell: bash
+        run: |
+          npx electron-vite build
+          if [ -n "${APPLE_ID:-}" ]; then
+            npx electron-builder --mac --publish always
+          else
+            echo "::warning::No Apple creds — building un-notarized mac (no auto-update)."
+            npx electron-builder --mac --publish always -c.mac.notarize=false
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # No signing cert in CI → skip the auto-discovery that would otherwise fail.
+          CSC_IDENTITY_AUTO_DISCOVERY: false

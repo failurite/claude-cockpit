@@ -32,7 +32,13 @@ Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design. Key files
 - `src/main/issues.ts` — gh CLI wrapper (list/view/close GitHub issues).
 - `src/main/worktrees.ts` — per-issue worktree/branch isolation + the serialized
   Done flow (rebase → merge to default branch → push → cleanup).
-- `src/main/tmux.ts` — persistent tmux backing for the dev session.
+- `src/main/tmux.ts` — persistent tmux backing for the dev session (macOS/Linux
+  only; `tmuxBin()` short-circuits to null on Windows).
+- `src/main/platform.ts` — the cross-platform choke point: `buildShellInvocation()`
+  (login-zsh `exec` on POSIX vs `cmd.exe /c` on Windows), `quoteArg`/`quotePath`
+  (POSIX single-quote vs Windows double-quote, no backslash-doubling), `NPM_BIN`,
+  `IS_MAC`/`IS_WINDOWS`. Touch this — not ad-hoc `process.platform` checks — when
+  adding OS-specific behavior.
 - `src/main/transcripts.ts` — sub-agent counting from `~/.claude/projects/*.jsonl`.
 - `src/main/store.ts` — JSON persistence (names, panes + browser tabs, workspaces, flags).
 - `src/preload/index.ts` — the `window.cockpit` bridge.
@@ -74,18 +80,37 @@ using `claude --resume <id>` to bring back conversations.
 
 ## Updating the installed app (local, no GitHub)
 
-`npm run update-app` (→ `scripts/install-local.sh`) is the real update mechanism for
-the packaged Desktop app: it rebuilds, swaps `Claude Cockpit.app` in place, and a
-detached watcher relaunches it after the old instance quits. No notarization/signing
-prompts — a locally-built app isn't quarantined. You can run this from the **Cockpit
-Dev** session: the dev session's cwd is the real repo even in the packaged app,
-because the repo path is baked in at build time via `__REPO_ROOT__`
-(`electron.vite.config.ts` `define` → `REPO_ROOT` in `src/main/index.ts`).
+`npm run update-app` (→ `scripts/update-app.mjs`, which dispatches to
+`install-local.sh` on macOS / `install-local.ps1` on Windows) is the local update
+mechanism for the packaged Desktop app: it rebuilds, swaps the installed app in
+place, and a detached watcher relaunches it after the old instance quits. No
+notarization/signing prompts — a locally-built app isn't quarantined. You can run
+this from the **Cockpit Dev** session: the dev session's cwd is the real repo even
+in the packaged app, because the repo path is baked in at build time via
+`__REPO_ROOT__` (`electron.vite.config.ts` `define` → `REPO_ROOT` in
+`src/main/index.ts`).
 
-Note: the in-app `relaunchApp()` only relaunches the current bundle — it can't
-update a packaged app (the `out/` bundle lives in a read-only asar), so use
-`update-app` to actually ship changes. `electron-updater` (`src/main/updater.ts`)
-is wired for the GitHub-Releases path but dormant (no launch-time check).
+Note: `update-app` only builds the platform it runs on. To ship a feature to BOTH
+platform releases, push a version tag (`v*`) — `.github/workflows/release.yml`
+builds macOS + Windows from the same commit and publishes both to a GitHub Release,
+and the app auto-updates from that feed (launch-time check in
+`src/main/updater.ts`). The in-app `relaunchApp()` only relaunches the current
+bundle — it can't update a packaged app (the `out/` bundle lives in a read-only
+asar).
+
+## Cross-platform (macOS + Windows)
+
+- All OS differences route through `src/main/platform.ts` — don't sprinkle
+  `process.platform` checks. The pane shell, arg/path quoting, and `npm` binary
+  all come from there.
+- Windows has no tmux: `tmuxBin()` returns null, so the dev session uses the
+  ephemeral pane + `claude --resume` fallback (no live-process persistence across
+  restarts — acceptable, conversations still restore).
+- The out-of-band plumbing is already portable: hooks run as `node "<path>"`
+  (`hooks-install.ts`, via `quotePath` so Windows `C:\…` paths aren't backslash-
+  doubled) and MCP shims via `{ command: 'node', args: [...] }`. Both require
+  `node` on `PATH` in the Claude session's environment.
+- Windows builds are **unsigned** for now (SmartScreen warns on first download).
 
 ## Git / GitHub
 
@@ -101,4 +126,4 @@ The embedded per-session browser **superseded** the old "CDP tab mirror" roadmap
 item — sessions drive in-app `WebContentsView` tabs via the `cockpit-browser` MCP
 server. Remaining: split/grid layout, real synthetic input for the embedded
 browser (CDP `Input.dispatch` — `scripts/webview-cdp-smoke.cjs` proves it works),
-Windows/Linux.
+Linux. Windows is now experimentally supported (see the cross-platform section).

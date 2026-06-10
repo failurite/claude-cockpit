@@ -22,6 +22,7 @@ import {
   killCockpitSession,
   killAllCockpitSessions
 } from './tmux.js'
+import { IS_MAC, NPM_BIN } from './platform.js'
 import type { HookEvent, Workspace, AppSettings } from '../shared/types.js'
 import { COCKPIT_WORKSPACE_ID } from '../shared/types.js'
 
@@ -553,7 +554,7 @@ function removeWorkspace(id: string): Workspace[] {
 
 function runBuild(): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn('npm', ['run', 'build'], { cwd: REPO_ROOT, stdio: 'ignore' })
+    const child = spawn(NPM_BIN, ['run', 'build'], { cwd: REPO_ROOT, stdio: 'ignore' })
     child.on('error', reject)
     child.on('exit', (code) =>
       code === 0 ? resolve() : reject(new Error(`build exited ${code}`))
@@ -590,7 +591,11 @@ function createWindow(): void {
     width: 1440,
     height: 900,
     backgroundColor: '#14161b',
-    titleBarStyle: 'hiddenInset',
+    // macOS: inset traffic-lights over the renderer. Windows: a hidden title bar
+    // with an overlay so the min/max/close controls still render (Linux gets the
+    // default frame). `hiddenInset` is macOS-only and would throw elsewhere.
+    titleBarStyle: IS_MAC ? 'hiddenInset' : 'hidden',
+    titleBarOverlay: IS_MAC ? undefined : { color: '#14161b', symbolColor: '#c8ccd4', height: 36 },
     icon: ICON_PNG,
     webPreferences: {
       preload: join(__dirname, '../preload/index.mjs'),

@@ -4,6 +4,13 @@ appId: com.failurite.claude-cockpit
 productName: Claude Cockpit
 copyright: Copyright © 2026 failurite
 
+# Don't let electron-builder native-rebuild node-pty from source: we depend on
+# @homebridge/node-pty-prebuilt-multiarch precisely for its prebuilt, ABI-matched
+# binaries (pty-smoke.cjs proves the prebuild loads under this Electron). The
+# default rebuild invokes node-gyp, which fails on CI runners whose Python 3.12 no
+# longer ships distutils. false = bundle the prebuilt binary as installed.
+npmRebuild: false
+
 directories:
   # build/ holds icons + entitlements; dist/ is where installers land.
   buildResources: build

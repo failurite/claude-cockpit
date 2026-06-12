@@ -243,6 +243,18 @@ async function bootstrap(): Promise<void> {
     return listCockpitSessions()
   })
   ipcMain.handle('sessions:rename', (_e, id: string, name: string) => manager.rename(id, name))
+  ipcMain.handle('sessions:archive', (_e, id: string) => {
+    manager.archive(id)
+    return manager.listArchivedInfo()
+  })
+  ipcMain.handle('sessions:archived-list', () => manager.listArchivedInfo())
+  ipcMain.handle('sessions:restore-archived', (_e, archivedId: string) =>
+    manager.restoreArchived(archivedId)
+  )
+  ipcMain.handle('sessions:delete-archived', (_e, archivedId: string) => {
+    manager.deleteArchived(archivedId)
+    return manager.listArchivedInfo()
+  })
   ipcMain.handle('pty:attach', (_e, id: string) => manager.getBuffer(id))
   ipcMain.on('pty:write', (_e, id: string, data: string) => manager.write(id, data))
   ipcMain.on('pty:resize', (_e, id: string, cols: number, rows: number) =>

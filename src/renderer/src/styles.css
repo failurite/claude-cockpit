@@ -474,6 +474,47 @@ body {
 .close-btn:hover {
   color: #ff6b6b;
 }
+/* Archive button: same reveal-on-hover as close, but muted/neutral. */
+.archive-btn {
+  visibility: hidden;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 2px;
+  opacity: 0.7;
+  filter: grayscale(0.3);
+}
+.session-item:hover .archive-btn {
+  visibility: visible;
+}
+.archive-btn:hover {
+  opacity: 1;
+  filter: none;
+}
+/* Archived list under a workspace (reuses .ws-issues-* layout for the toggle). */
+.ws-archived {
+  margin-top: 2px;
+}
+.archived-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px 3px 18px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.archived-item .archived-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.archived-item .spacer {
+  flex: 1;
+}
+.archived-item:hover {
+  color: var(--text);
+}
 .ghost-btn.subtle {
   border-style: solid;
   border-color: transparent;

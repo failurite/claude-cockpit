@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type {
   AppInfo,
+  ArchivedSessionInfo,
   HookInstallState,
   TerminalSession,
   Workspace
@@ -26,6 +27,8 @@ export default function App(): JSX.Element {
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null)
   const [dialog, setDialog] = useState<Dialog | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  // Archived (closed-but-saved) sessions, reopenable on demand.
+  const [archived, setArchived] = useState<ArchivedSessionInfo[]>([])
   // Which panes currently show their embedded browser (auto-opens on first tab).
   const [browserOpen, setBrowserOpen] = useState<Record<string, boolean>>({})
 
@@ -68,6 +71,7 @@ export default function App(): JSX.Element {
       if (s.length && !activeId) setActiveId(s[0].id)
     })
     window.cockpit.workspaces.list().then(setWorkspaces)
+    window.cockpit.archivedSessions().then(setArchived)
     const off = window.cockpit.onSessionsChanged(setSessions)
     window.cockpit.hooks.status().then(setHooks)
     window.cockpit.appInfo().then((info) => {
@@ -100,6 +104,19 @@ export default function App(): JSX.Element {
   }, [])
 
   const closeSession = useCallback((id: string) => window.cockpit.closeSession(id), [])
+
+  // Archive (close & save) / reopen / forget. Each refreshes the archived list.
+  const archiveSession = useCallback(async (id: string) => {
+    setArchived(await window.cockpit.archiveSession(id))
+  }, [])
+  const restoreArchived = useCallback(async (archivedId: string) => {
+    const s = await window.cockpit.restoreArchivedSession(archivedId)
+    if (s) setActiveId(s.id)
+    setArchived(await window.cockpit.archivedSessions())
+  }, [])
+  const deleteArchived = useCallback(async (archivedId: string) => {
+    setArchived(await window.cockpit.deleteArchivedSession(archivedId))
+  }, [])
 
   // GitHub-issue sessions: start (or focus) one, and the Done merge flow.
   const [issueBusy, setIssueBusy] = useState(false)
@@ -220,6 +237,10 @@ export default function App(): JSX.Element {
             activeId={activeId}
             onSelect={setActiveId}
             onClose={closeSession}
+            onArchive={archiveSession}
+            archived={archived}
+            onRestoreArchived={restoreArchived}
+            onDeleteArchived={deleteArchived}
             onRename={renameSession}
             onNewSession={newSession}
             onCustomSession={(workspaceId) => setDialog({ kind: 'session-custom', workspaceId })}

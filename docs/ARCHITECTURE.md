@@ -125,6 +125,13 @@ This is a heuristic and a good place to contribute a more exact implementation
   cwd, command, kind, options, Claude `session_id`, embedded-browser tab URLs) on
   each change; `restore()` respawns them on boot with `claude --resume <id>` and
   reopens their browser tabs.
+- **Archive/reopen:** `archive(id)` captures the same record (via the shared
+  `toPersisted`, snapshotting tabs *before* the pane teardown) into a separate
+  `archived` store list, then kills the pty like `close()` — but the record lives
+  on. `archived` is **not** respawned on boot. `restoreArchived(archivedId)` drops
+  the record and `create()`s a fresh pane from it (`--resume` + reopened tabs);
+  `deleteArchived` forgets it. The renderer sees `ArchivedSessionInfo[]` via
+  `listArchivedInfo()` and shows a per-workspace "Archived" list.
 - **Cockpit workspace:** the app's own repo is a built-in workspace
   (`COCKPIT_WORKSPACE_ID`), *synthesized* by `listAllWorkspaces()` rather than
   stored — present by default, not editable/deletable, hidden via the

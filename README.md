@@ -39,6 +39,10 @@ work, and which is done. `claude-cockpit` gives you:
   coordinate on related bugs, via a Cockpit-owned MCP server.
 - **Per-workspace git** — branch, ↑unpushed / ↓unpulled counts, a dirty marker,
   and manual Pull / Push right in the sidebar.
+- **Archive & reopen sessions** — for sessions you only use occasionally, 📦
+  archive one to close it but save it; reopen it later from the workspace's
+  **Archived** list with its conversation (`claude --resume`) and browser tabs
+  intact.
 - **Persistence & restore** — close and reopen Cockpit and your sessions come
   back, resuming conversations via `claude --resume`; the dev session keeps its
   live process via tmux.
@@ -56,6 +60,12 @@ work, and which is done. `claude-cockpit` gives you:
   using `claude --resume <id>` to bring conversations back.
 - **Close all sessions** (Settings → Sessions) shuts every pane down and sweeps
   any lingering cockpit-owned tmux sessions.
+- **Archive a session** with the 📦 button to close it but keep it: the pty is
+  killed and the pane removed, but its launch record — Claude `session_id` and
+  embedded-browser tab URLs — is saved. Each workspace gains a collapsible
+  **Archived** list where you can ▶ reopen one (respawned with `claude --resume`
+  and its tabs reopened, logins intact via the persistent profile) or × forget it.
+  Archived sessions survive restarts and are *not* auto-opened on boot.
 
 ### The built-in "Cockpit" workspace
 - Cockpit's own repo appears as a **first-class workspace named "Cockpit"** —

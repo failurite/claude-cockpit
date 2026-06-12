@@ -21,6 +21,14 @@ export interface PersistedSession {
   issue?: IssueRef | null
 }
 
+/** A persisted session that's been archived (closed but saved to reopen on demand). */
+export interface ArchivedSession extends PersistedSession {
+  /** Stable id for reopen / delete. */
+  archivedId: string
+  /** ms epoch when it was archived. */
+  archivedAt: number
+}
+
 /**
  * Tiny JSON-file store for things that should survive restarts:
  *   - user-assigned pane names (keyed by a stable name-key)
@@ -30,13 +38,15 @@ export interface PersistedSession {
 interface Persisted {
   names: Record<string, string>
   sessions: PersistedSession[]
+  /** Closed-but-saved sessions, reopenable on demand (not auto-restored on boot). */
+  archived: ArchivedSession[]
   workspaces: Workspace[]
   /** One-time flags, e.g. whether we've already auto-installed status hooks. */
   flags: Record<string, boolean>
 }
 
 function empty(): Persisted {
-  return { names: {}, sessions: [], workspaces: [], flags: {} }
+  return { names: {}, sessions: [], archived: [], workspaces: [], flags: {} }
 }
 
 let cache: Persisted = empty()
@@ -88,6 +98,15 @@ export function getSavedSessions(): PersistedSession[] {
 
 export function saveSessions(sessions: PersistedSession[]): void {
   cache.sessions = sessions
+  flush()
+}
+
+export function getArchivedSessions(): ArchivedSession[] {
+  return cache.archived
+}
+
+export function saveArchivedSessions(archived: ArchivedSession[]): void {
+  cache.archived = archived
   flush()
 }
 

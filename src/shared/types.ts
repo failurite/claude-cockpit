@@ -86,6 +86,29 @@ export interface TerminalSession {
   updatedAt: number
 }
 
+/**
+ * A session that was *archived* — closed (pty killed, pane removed) but saved so
+ * it can be reopened later with its Claude conversation (`--resume`) and embedded
+ * browser tabs intact. This is the renderer-facing summary; the full launch record
+ * lives in the main-process store.
+ */
+export interface ArchivedSessionInfo {
+  /** Stable id for this archived record (reopen / delete target). */
+  archivedId: string
+  name: string
+  /** Workspace it belonged to (null for ad-hoc sessions). */
+  workspaceId: string | null
+  kind: 'normal' | 'dev'
+  /** Issue number if this was an issue-dedicated session, for the #n chip. */
+  issueNumber: number | null
+  /** True when there's a Claude conversation to resume on reopen. */
+  hasConversation: boolean
+  /** How many embedded-browser tabs will reopen with it. */
+  tabCount: number
+  /** ms epoch when it was archived. */
+  archivedAt: number
+}
+
 /** A GitHub issue as listed in a workspace's Issues panel (via the gh CLI). */
 export interface IssueSummary {
   number: number
@@ -226,6 +249,14 @@ export interface CockpitApi {
   closeSession(id: string): Promise<void>
   /** Close every session (kills all ptys) and kill all cockpit tmux; returns remaining tmux names. */
   closeAllSessions(): Promise<string[]>
+  /** Archive a session: close it but save its conversation + browser tabs to reopen later. Returns the updated archived list. */
+  archiveSession(id: string): Promise<ArchivedSessionInfo[]>
+  /** List archived (closed-and-saved) sessions. */
+  archivedSessions(): Promise<ArchivedSessionInfo[]>
+  /** Reopen an archived session (claude --resume + reopen its tabs); returns the new pane, or null if the record is gone. */
+  restoreArchivedSession(archivedId: string): Promise<TerminalSession | null>
+  /** Permanently delete an archived session record. Returns the updated archived list. */
+  deleteArchivedSession(archivedId: string): Promise<ArchivedSessionInfo[]>
   renameSession(id: string, name: string): Promise<void>
   /** Send user keystrokes/data into a pty. */
   write(id: string, data: string): void

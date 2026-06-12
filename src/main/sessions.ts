@@ -3,14 +3,22 @@ import { homedir } from 'os'
 import { join } from 'path'
 import pty from '@homebridge/node-pty-prebuilt-multiarch'
 import type { IPty } from '@homebridge/node-pty-prebuilt-multiarch'
-import type { SessionOptions, SessionStatus, TerminalSession } from '../shared/types.js'
+import type {
+  ArchivedSessionInfo,
+  SessionOptions,
+  SessionStatus,
+  TerminalSession
+} from '../shared/types.js'
 import { DEFAULT_SESSION_OPTIONS } from '../shared/types.js'
 import {
   getSavedName,
   saveName,
   saveSessions,
   getSavedSessions,
-  type PersistedSession
+  getArchivedSessions,
+  saveArchivedSessions,
+  type PersistedSession,
+  type ArchivedSession
 } from './store.js'
 import { watchTranscriptForSession } from './transcripts.js'
 import {
@@ -136,9 +144,9 @@ export class SessionManager extends EventEmitter {
     this.emit('sessions', this.list())
   }
 
-  /** Write the current pane set to disk so it can be restored next launch. */
-  private persist(): void {
-    const sessions: PersistedSession[] = [...this.panes.values()].map((p) => ({
+  /** Snapshot one pane as a persistable record (current options, issue, browser tabs). */
+  private toPersisted(p: Pane): PersistedSession {
+    return {
       name: p.session.name,
       cwd: p.session.cwd,
       command: p.session.command,
@@ -151,8 +159,12 @@ export class SessionManager extends EventEmitter {
       browserTabs: (this.browser.getTabs?.(p.session.id) ?? []).filter(
         (t) => t.url && t.url !== 'about:blank'
       )
-    }))
-    saveSessions(sessions)
+    }
+  }
+
+  /** Write the current pane set to disk so it can be restored next launch. */
+  private persist(): void {
+    saveSessions([...this.panes.values()].map((p) => this.toPersisted(p)))
   }
 
   /** Re-persist now (e.g. when embedded-browser tabs change, which we don't otherwise observe). */
@@ -360,6 +372,76 @@ export class SessionManager extends EventEmitter {
   /** Close every pane (kills ptys, clears persisted state). tmux is killed by the caller. */
   closeAll(): void {
     for (const id of [...this.panes.keys()]) this.close(id)
+  }
+
+  /**
+   * Archive a pane: capture its full launch record (conversation id + current
+   * browser tabs) into the archived store, then tear the live pane down like
+   * close(). The conversation itself lives in ~/.claude, so a later
+   * restoreArchived() brings it back via `claude --resume` with its tabs reopened.
+   * The dev session can't be archived (it auto-opens every launch).
+   */
+  archive(id: string): void {
+    const p = this.panes.get(id)
+    if (!p || p.session.kind === 'dev') return
+    // Capture tabs BEFORE the 'closed' teardown disposes the WebContentsViews.
+    const record: ArchivedSession = {
+      ...this.toPersisted(p),
+      archivedId: `arch-${Date.now().toString(36)}-${++seq}`,
+      archivedAt: Date.now()
+    }
+    saveArchivedSessions([...getArchivedSessions(), record])
+    // Same teardown as close() (but the persisted record lives on in `archived`).
+    p.unwatch?.()
+    try {
+      p.proc.kill()
+    } catch {
+      /* already dead */
+    }
+    if (p.session.claudeSessionId) this.claudeIndex.delete(p.session.claudeSessionId)
+    this.panes.delete(id)
+    this.emit('closed', id)
+    this.emitSessions()
+    this.persist()
+  }
+
+  /** Renderer-facing summary of every archived session. */
+  listArchivedInfo(): ArchivedSessionInfo[] {
+    return getArchivedSessions().map((a) => ({
+      archivedId: a.archivedId,
+      name: a.name,
+      workspaceId: a.workspaceId,
+      kind: a.kind,
+      issueNumber: a.issue?.number ?? null,
+      hasConversation: !!a.claudeSessionId,
+      tabCount: a.browserTabs?.length ?? 0,
+      archivedAt: a.archivedAt
+    }))
+  }
+
+  /** Reopen an archived session (drops it from the archive). Returns the new pane, or null. */
+  restoreArchived(archivedId: string): TerminalSession | null {
+    const all = getArchivedSessions()
+    const rec = all.find((a) => a.archivedId === archivedId)
+    if (!rec) return null
+    saveArchivedSessions(all.filter((a) => a.archivedId !== archivedId))
+    const session = this.create({
+      cwd: rec.cwd,
+      command: rec.command,
+      name: rec.name,
+      kind: rec.kind,
+      workspaceId: rec.workspaceId,
+      options: rec.options,
+      resumeId: rec.claudeSessionId,
+      issue: rec.issue ?? null
+    })
+    if (rec.browserTabs?.length) this.browser.restoreTabs?.(session.id, rec.browserTabs)
+    return session
+  }
+
+  /** Permanently forget an archived session. */
+  deleteArchived(archivedId: string): void {
+    saveArchivedSessions(getArchivedSessions().filter((a) => a.archivedId !== archivedId))
   }
 
   /** Apply a partial update to a pane's session and broadcast. */

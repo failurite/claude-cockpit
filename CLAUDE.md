@@ -12,7 +12,9 @@ git status + push/pull, and an **embedded per-session browser** Claude drives vi
 a Cockpit-owned MCP server (🌐 badge lights while browsing; external Chrome is a
 per-session opt-in). Sessions can also **see each other** — a second MCP server
 lets one session list its siblings and read a digest of another's context to
-coordinate related work. It embeds the real `claude` TUI per pane (node-pty +
+coordinate related work. Sessions can be **archived** (closed but saved) and
+reopened later with their conversation (`--resume`) + browser tabs intact. It
+embeds the real `claude` TUI per pane (node-pty +
 xterm.js) and observes state out-of-band via Claude Code hooks + transcript
 watching — it does **not** reimplement Claude Code.
 

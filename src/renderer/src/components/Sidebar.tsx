@@ -1,8 +1,14 @@
 import { useState } from 'react'
-import type { SessionStatus, TerminalSession, Workspace } from '../../../shared/types'
+import type {
+  ArchivedSessionInfo,
+  SessionStatus,
+  TerminalSession,
+  Workspace
+} from '../../../shared/types'
 import { COCKPIT_WORKSPACE_ID } from '../../../shared/types'
 import { WorkspaceGit } from './WorkspaceGit'
 import { WorkspaceIssues } from './WorkspaceIssues'
+import { WorkspaceArchived } from './WorkspaceArchived'
 
 const STATUS_LABEL: Record<SessionStatus, string> = {
   starting: 'starting…',
@@ -18,6 +24,12 @@ interface Props {
   activeId: string | null
   onSelect: (id: string) => void
   onClose: (id: string) => void
+  /** Archive a session (close but save to reopen later). */
+  onArchive: (id: string) => void
+  /** Archived (closed-but-saved) sessions across all workspaces. */
+  archived: ArchivedSessionInfo[]
+  onRestoreArchived: (archivedId: string) => void
+  onDeleteArchived: (archivedId: string) => void
   onRename: (id: string, name: string) => void
   /** Create a session inheriting a workspace's default options. */
   onNewSession: (workspaceId: string) => void
@@ -44,6 +56,10 @@ export function Sidebar({
   activeId,
   onSelect,
   onClose,
+  onArchive,
+  archived,
+  onRestoreArchived,
+  onDeleteArchived,
   onRename,
   onNewSession,
   onCustomSession,
@@ -89,6 +105,7 @@ export function Sidebar({
 
   // Sessions whose workspace isn't shown (ad-hoc, or the Cockpit workspace when hidden).
   const ungrouped = sessions.filter((s) => !workspaces.some((w) => w.id === s.workspaceId))
+  const archivedUngrouped = archived.filter((a) => !workspaces.some((w) => w.id === a.workspaceId))
 
   const renderItem = (s: TerminalSession): JSX.Element => (
     <li
@@ -152,6 +169,18 @@ export function Sidebar({
           {s.subagentCount > 0 && ` · ⛓ ${s.subagentCount}`}
         </span>
       </div>
+      {s.kind !== 'dev' && (
+        <button
+          className="archive-btn"
+          title="Archive — close but save to reopen later (keeps conversation + tabs)"
+          onClick={(e) => {
+            e.stopPropagation()
+            onArchive(s.id)
+          }}
+        >
+          📦
+        </button>
+      )}
       <button
         className="close-btn"
         title="Close session"
@@ -271,17 +300,31 @@ export function Sidebar({
                   )}
                 </ul>
               )}
+              {!isCollapsed && (
+                <WorkspaceArchived
+                  items={archived.filter((a) => a.workspaceId === ws.id)}
+                  onRestore={onRestoreArchived}
+                  onDelete={onDeleteArchived}
+                />
+              )}
             </div>
           )
         })}
 
-        {ungrouped.length > 0 && (
+        {(ungrouped.length > 0 || archivedUngrouped.length > 0) && (
           <div className="ws-group">
             <div className="ws-header">
               <span className="ws-chevron-spacer" />
               <span className="ws-name muted">Other</span>
             </div>
-            <ul className="session-list">{ungrouped.map(renderItem)}</ul>
+            {ungrouped.length > 0 && (
+              <ul className="session-list">{ungrouped.map(renderItem)}</ul>
+            )}
+            <WorkspaceArchived
+              items={archivedUngrouped}
+              onRestore={onRestoreArchived}
+              onDelete={onDeleteArchived}
+            />
           </div>
         )}
       </div>

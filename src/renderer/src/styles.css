@@ -474,26 +474,6 @@ body {
 .close-btn:hover {
   color: #ff6b6b;
 }
-.sidebar-foot {
-  padding: 10px;
-  border-top: 1px solid var(--border);
-}
-.ghost-btn {
-  width: 100%;
-  padding: 8px;
-  border-radius: 8px;
-  background: transparent;
-  border: 1px dashed var(--border);
-  color: var(--muted);
-  cursor: pointer;
-}
-.ghost-btn + .ghost-btn {
-  margin-top: 6px;
-}
-.ghost-btn:hover {
-  border-color: var(--accent);
-  color: var(--text);
-}
 .ghost-btn.subtle {
   border-style: solid;
   border-color: transparent;

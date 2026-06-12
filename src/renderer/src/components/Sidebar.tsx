@@ -285,12 +285,6 @@ export function Sidebar({
           </div>
         )}
       </div>
-
-      <div className="sidebar-foot">
-        <button className="ghost-btn" onClick={onNewWorkspace}>
-          + New workspace
-        </button>
-      </div>
     </aside>
   )
 }

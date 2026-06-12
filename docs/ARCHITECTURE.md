@@ -270,8 +270,10 @@ GitHub issues become dedicated, concurrent sessions with clean repo sync:
   renderer bumps `issuesRefreshKey`, so each open workspace Issues list re-fetches
   and the just-closed issue drops off.
 - **Failure handling:** `dirty` and `conflict` results leave the worktree
-  intact and Cockpit *types instructions into that session's pty* so its Claude
-  fixes the state; the user presses Done again. The `conflict` instruction hands
+  intact and Cockpit *types instructions into that session's pty* (via
+  `sendPrompt`, which submits with a **separate delayed Enter** — a `\r` in the
+  same write burst is read as pasted text and never submits) so its Claude fixes
+  the state; the user presses Done again. The `conflict` instruction hands
   the whole resolution to the session: finish the paused rebase
   (`git rebase --continue`), then — since merging the default branch can change
   behavior — re-validate and **load the app up for interactive testing** (embedded

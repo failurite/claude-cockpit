@@ -334,6 +334,21 @@ export class SessionManager extends EventEmitter {
     this.panes.get(id)?.proc.write(data)
   }
 
+  /**
+   * Type a prompt into a session and submit it. The Enter is sent as a SEPARATE,
+   * delayed keystroke on purpose: Claude's TUI treats a fast burst of characters
+   * as a *paste*, so a `\r` bundled onto the end becomes a literal newline in the
+   * input (it sits there unsent) instead of submitting. A standalone Enter that
+   * arrives after the paste settles registers as a real submit. Used for the
+   * Done-flow instructions Cockpit hands to a session (dirty / merge conflict).
+   */
+  sendPrompt(id: string, text: string): void {
+    const p = this.panes.get(id)
+    if (!p) return
+    p.proc.write(text)
+    setTimeout(() => this.panes.get(id)?.proc.write('\r'), 150)
+  }
+
   resize(id: string, cols: number, rows: number): void {
     const p = this.panes.get(id)
     if (!p) return

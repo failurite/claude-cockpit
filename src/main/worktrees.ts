@@ -1,5 +1,5 @@
 import { app } from 'electron'
-import { join, basename } from 'path'
+import { join, basename, isAbsolute } from 'path'
 import { existsSync, mkdirSync } from 'fs'
 import { runGit } from './git.js'
 import type { IssueDoneResult } from '../shared/types.js'
@@ -28,6 +28,24 @@ async function hasRemote(dir: string): Promise<boolean> {
   } catch {
     return false
   }
+}
+
+/**
+ * True if a rebase is paused in this worktree (conflicts left for the session to
+ * resolve). Checked before we try anything else on Done, so a second press while
+ * the rebase is still unfinished returns a clear "finish the rebase" message
+ * instead of git's cryptic "already a rebase-merge directory" error.
+ */
+async function rebaseInProgress(dir: string): Promise<boolean> {
+  for (const marker of ['rebase-merge', 'rebase-apply']) {
+    try {
+      const out = (await runGit(dir, ['rev-parse', '--git-path', marker])).stdout.trim()
+      if (out && existsSync(isAbsolute(out) ? out : join(dir, out))) return true
+    } catch {
+      /* not a repo / git too old — fall through */
+    }
+  }
+  return false
 }
 
 /** The repo's default branch: origin/HEAD when known, else main/master, else "main". */
@@ -111,6 +129,16 @@ async function doFinish(repoDir: string, worktree: string, branch: string): Prom
   try {
     if (!existsSync(join(worktree, '.git'))) {
       return { ok: false, status: 'error', message: `worktree missing: ${worktree}` }
+    }
+    // 0) A rebase from a previous Done may still be paused on conflicts. Catch it
+    //    first so we report "finish the rebase" rather than tripping the dirty
+    //    check or restarting a rebase on top of an in-progress one.
+    if (await rebaseInProgress(worktree)) {
+      return {
+        ok: false,
+        status: 'conflict',
+        message: 'A rebase is still in progress in this worktree — finish resolving the conflicts and run `git rebase --continue`.'
+      }
     }
     // 1) Everything must be committed.
     const dirty = (await runGit(worktree, ['status', '--porcelain'])).stdout.trim()

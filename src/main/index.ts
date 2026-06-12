@@ -489,20 +489,31 @@ async function finishIssueSession(paneId: string): Promise<IssueDoneResult> {
 
   const res = await finishIssueWorktree(repoDir, worktree, branch)
   if (res.status === 'dirty') {
+    // One line (no embedded newlines) so the Claude TUI doesn't submit it early;
+    // trailing \r submits it as a prompt.
     manager.write(
       paneId,
-      `Done was pressed for issue #${number}, but the worktree has uncommitted changes. ` +
-        `Please review and commit everything (or discard scratch files), then say "ready" so Done can be pressed again.\r`
+      `Done was pressed for issue #${number}, but this worktree has uncommitted changes. ` +
+        `Review them and either commit everything with clear messages or discard scratch files. ` +
+        `Then make sure the fix is validated and leave it open for me to review — if it's a web app, ` +
+        `open it in your embedded browser on the relevant page; otherwise run the app — then say "ready" or press Done again.\r`
     )
+    res.message = `Issue #${number}: uncommitted changes — asked the session to commit/clean up and ready it for review, then press Done again.`
     return res
   }
   if (res.status === 'conflict') {
+    // Hand the resolution to the session's Claude: finish the paused rebase, then
+    // re-validate (the merge can change behavior) and surface the app for testing.
     manager.write(
       paneId,
-      `Done was pressed for issue #${number}, but rebasing onto the default branch hit conflicts. ` +
-        `Resolve the conflicts in this worktree (git status), run git rebase --continue, ` +
-        `then say "ready" so Done can be pressed again.\r`
+      `Done was pressed for issue #${number}, but rebasing your branch onto the default branch hit merge conflicts and the rebase is now paused in this worktree. ` +
+        `Please resolve it yourself: run 'git status' to see the conflicted files, resolve each conflict carefully, 'git add' the resolved files, ` +
+        `and run 'git rebase --continue' (repeat until the rebase finishes). ` +
+        `Because merging in the latest default branch can change behavior, then re-validate the fix — run the build/tests and exercise the issue's behavior — ` +
+        `and load the app up so I can test it interactively: for a web app, open it in your embedded browser and leave it on the relevant page; otherwise run the app. ` +
+        `Tell me what you had to change to resolve the conflicts and confirm it still works, then I'll press Done again to merge.\r`
     )
+    res.message = `Merge conflicts on issue #${number} — asked the session to resolve, re-validate, and load the app for you to test, then press Done again.`
     return res
   }
   if (res.status !== 'merged') return res

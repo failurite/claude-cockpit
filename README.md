@@ -128,8 +128,11 @@ work, and which is done. `claude-cockpit` gives you:
   push → close the issue with a commit-summary comment → remove the worktree and
   retire the session, then **refresh the Issues list** so the closed issue drops
   off. Finishes are **serialized** so main never races. If the worktree is dirty
-  or the rebase conflicts, Cockpit types instructions into that session so its
-  Claude fixes things, then you press Done again.
+  or the rebase conflicts, Cockpit hands the fix to that session — for a conflict
+  it directs Claude to **resolve the paused rebase, re-validate, and load the app
+  up for you to test interactively** (since merging can change behavior) — then
+  you press Done again (which safely detects an unfinished rebase rather than
+  restarting it).
 
 ### Per-workspace git
 - Each workspace (and the Dev session's repo) shows branch, ↑ahead / ↓behind, and a

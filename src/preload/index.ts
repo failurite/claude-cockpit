@@ -6,6 +6,7 @@ const dataSubs = new Map<string, Set<(data: string) => void>>()
 const sessionSubs = new Set<(s: TerminalSession[]) => void>()
 const updateSubs = new Set<(s: UpdateStatus) => void>()
 const browserTabSubs = new Set<(paneId: string, tabs: BrowserTab[]) => void>()
+const refocusSubs = new Set<() => void>()
 
 ipcRenderer.on('pty:data', (_e, paneId: string, data: string) => {
   dataSubs.get(paneId)?.forEach((cb) => cb(data))
@@ -18,6 +19,9 @@ ipcRenderer.on('updates:status', (_e, s: UpdateStatus) => {
 })
 ipcRenderer.on('browser:tabs', (_e, paneId: string, tabs: BrowserTab[]) => {
   browserTabSubs.forEach((cb) => cb(paneId, tabs))
+})
+ipcRenderer.on('terminal:refocus', () => {
+  refocusSubs.forEach((cb) => cb())
 })
 
 const api: CockpitApi = {
@@ -43,6 +47,10 @@ const api: CockpitApi = {
   onSessionsChanged: (cb) => {
     sessionSubs.add(cb)
     return () => sessionSubs.delete(cb)
+  },
+  onRefocusTerminal: (cb) => {
+    refocusSubs.add(cb)
+    return () => refocusSubs.delete(cb)
   },
   hooks: {
     status: () => ipcRenderer.invoke('hooks:status'),

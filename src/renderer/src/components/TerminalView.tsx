@@ -6,13 +6,15 @@ import type { TerminalSession } from '../../../shared/types'
 interface Props {
   session: TerminalSession
   active: boolean
+  /** Bumped by App when main asks the active terminal to re-grab keyboard focus. */
+  refocusSignal?: number
 }
 
 /**
  * One live xterm.js view bound to a pty in the main process. Stays mounted when
  * inactive (hidden via CSS) so scrollback and the live process persist.
  */
-export function TerminalView({ session, active }: Props): JSX.Element {
+export function TerminalView({ session, active, refocusSignal }: Props): JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
@@ -79,6 +81,12 @@ export function TerminalView({ session, active }: Props): JSX.Element {
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active])
+
+  // Re-grab focus when main signals it (agent browser activity stole OS focus).
+  useEffect(() => {
+    if (active && refocusSignal) termRef.current?.focus()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refocusSignal])
 
   return <div ref={hostRef} className={`term-host ${active ? 'active' : 'hidden'}`} />
 }

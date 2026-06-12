@@ -32,13 +32,14 @@ export function startBrowserRpc(
     const tabId = (p.tabId as string | undefined) ?? null
     switch (method) {
       case 'open_tab':
-        return mgr.openTab(paneId, p.url as string | undefined)
+        // agent=true: this load shouldn't steal focus from a terminal the user types in.
+        return mgr.openTab(paneId, p.url as string | undefined, true)
       case 'list_tabs':
         return mgr.listTabs(paneId)
       case 'close_tab':
         return mgr.closeTab(paneId, p.tabId as string)
       case 'navigate':
-        await mgr.navigate(paneId, tabId, String(p.url ?? ''))
+        await mgr.navigate(paneId, tabId, String(p.url ?? ''), true)
         return mgr.listTabs(paneId)
       case 'click':
         await mgr.click(paneId, tabId, String(p.selector ?? ''))

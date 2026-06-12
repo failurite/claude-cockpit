@@ -20,6 +20,9 @@ interface Tab {
   title: string
   url: string
   loading: boolean
+  /** This load was started by the agent (RPC), not the user — bounce focus back
+   *  to the host window when it finishes so it can't steal terminal typing. */
+  agentLoad?: boolean
 }
 
 interface PaneBrowser {
@@ -84,10 +87,10 @@ export class BrowserManager extends EventEmitter {
     return pb.tabs.map((t) => this.toPublic(pb, t))
   }
 
-  async openTab(paneId: string, url = HOME): Promise<BrowserTab> {
+  async openTab(paneId: string, url = HOME, agent = false): Promise<BrowserTab> {
     const pb = this.ensure(paneId)
     const view = new WebContentsView({ webPreferences: { partition: PARTITION } })
-    const tab: Tab = { id: `tab-${++this.seq}`, view, title: url, url, loading: true }
+    const tab: Tab = { id: `tab-${++this.seq}`, view, title: url, url, loading: true, agentLoad: agent }
     pb.tabs.push(tab)
     pb.activeTabId = tab.id
 
@@ -105,6 +108,13 @@ export class BrowserManager extends EventEmitter {
       tab.loading = false
       tab.url = wc.getURL()
       tab.title = wc.getTitle() || tab.url
+      // A page load grabs OS keyboard focus for this native view. If the agent
+      // (not the user) triggered it, hand focus back to the host window so it
+      // can't interrupt the user typing in a terminal.
+      if (tab.agentLoad) {
+        tab.agentLoad = false
+        this.focusHost()
+      }
       sync()
     })
     // Keep navigations the page initiates (links, redirects) in this same view.
@@ -143,9 +153,10 @@ export class BrowserManager extends EventEmitter {
     return this.listTabs(paneId)
   }
 
-  async navigate(paneId: string, tabId: string | null, url: string): Promise<void> {
+  async navigate(paneId: string, tabId: string | null, url: string, agent = false): Promise<void> {
     const tab = this.resolveTab(paneId, tabId)
     if (!tab) throw new Error('no such tab')
+    tab.agentLoad = agent // did-stop-loading bounces focus to the host if agent-driven
     await this.safeLoad(tab, url)
   }
 
@@ -192,6 +203,7 @@ export class BrowserManager extends EventEmitter {
         if (!el) return false; el.click(); return true; })()`
     )
     if (!ok) throw new Error(`no element matched ${selector}`)
+    this.focusHost() // clicking can shift OS focus into the page; hand it back
   }
 
   /** Focus an input matching a selector and set its value (fires input/change). */
@@ -205,6 +217,7 @@ export class BrowserManager extends EventEmitter {
         el.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`
     )
     if (!ok) throw new Error(`no element matched ${selector}`)
+    this.focusHost() // el.focus() pulled OS focus into the page; hand it back
   }
 
   /** PNG screenshot of a tab as a base64 string. */
@@ -213,6 +226,18 @@ export class BrowserManager extends EventEmitter {
     if (!tab) throw new Error('no such tab')
     const img = await tab.view.webContents.capturePage()
     return img.toPNG().toString('base64')
+  }
+
+  /**
+   * Return OS keyboard focus to the host window (the renderer that hosts the
+   * terminals) after agent-driven browser activity, and nudge the renderer to
+   * re-focus the active terminal — so background browsing never steals the
+   * keystrokes you're typing into a session.
+   */
+  focusHost(): void {
+    if (!this.win) return
+    this.win.webContents.focus()
+    this.win.webContents.send('terminal:refocus')
   }
 
   // ---- internals ----------------------------------------------------------

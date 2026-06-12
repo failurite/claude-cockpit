@@ -191,6 +191,15 @@ claude (pane)  ──spawns──►  mcp/cockpit-browser.mjs   (stdio MCP serve
   `scripts/webview-cdp-smoke.cjs` proves full CDP control
   (`webContents.debugger`, real `Input.dispatchMouseEvent`) works if/when we
   upgrade to synthetic input.
+- **Focus:** a native `WebContentsView` grabs OS keyboard focus on page load /
+  element focus, which would interrupt the user typing in a terminal while the
+  agent drives the browser in the background. So agent-initiated loads are tagged
+  (`tab.agentLoad`, set by the RPC path) and, along with the agent-only
+  `click`/`type`, call `focusHost()` when they settle — returning focus to the
+  host window and sending `terminal:refocus` so the active `TerminalView` re-grabs
+  it. User-initiated loads (URL bar, tab clicks) are *not* tagged, so manual
+  browsing keeps focus. `executeJavaScript`/`capturePage` work without OS focus,
+  so this never hampers the agent's tools.
 - **Profile:** all tabs share one persistent partition
   (`persist:cockpit-browser`) so logins survive restarts, with the
   `Electron`/app tokens stripped from the user agent so sign-in pages don't

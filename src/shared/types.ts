@@ -268,6 +268,9 @@ export interface CockpitApi {
   attach(id: string): Promise<string>
   /** Subscribe to session-list changes (status, names, subagents, add/remove). */
   onSessionsChanged(cb: (sessions: TerminalSession[]) => void): () => void
+  /** Main asks the renderer to re-focus the active terminal (e.g. after agent-driven
+   *  browser activity grabbed OS focus). Returns an unsubscribe fn. */
+  onRefocusTerminal(cb: () => void): () => void
   /** Status-hook install management against ~/.claude/settings.json. */
   hooks: {
     status(): Promise<HookInstallState>

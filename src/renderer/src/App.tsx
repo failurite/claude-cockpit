@@ -31,6 +31,9 @@ export default function App(): JSX.Element {
   const [archived, setArchived] = useState<ArchivedSessionInfo[]>([])
   // Which panes currently show their embedded browser (auto-opens on first tab).
   const [browserOpen, setBrowserOpen] = useState<Record<string, boolean>>({})
+  // Bumped when main asks us to re-focus the terminal (agent browser activity
+  // stole OS focus); the active TerminalView re-focuses when it changes.
+  const [refocusTick, setRefocusTick] = useState(0)
 
   // Sidebar width + collapsed state, persisted across launches.
   const [sbWidth, setSbWidth] = useState(() => {
@@ -73,13 +76,22 @@ export default function App(): JSX.Element {
     window.cockpit.workspaces.list().then(setWorkspaces)
     window.cockpit.archivedSessions().then(setArchived)
     const off = window.cockpit.onSessionsChanged(setSessions)
+    // Re-focus the terminal after agent browser activity, unless the user is in
+    // an app text field (URL bar / rename are <input>; xterm uses <textarea>).
+    const offRefocus = window.cockpit.onRefocusTerminal(() => {
+      if (document.activeElement?.tagName === 'INPUT') return
+      setRefocusTick((n) => n + 1)
+    })
     window.cockpit.hooks.status().then(setHooks)
     window.cockpit.appInfo().then((info) => {
       setAppInfo(info)
       // Surface the one-time auto-install in Settings rather than a banner.
       if (info.hooksJustInstalled) setSettingsOpen(true)
     })
-    return off
+    return () => {
+      off()
+      offRefocus()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -269,7 +281,12 @@ export default function App(): JSX.Element {
               </div>
             )}
             {sessions.map((s) => (
-              <TerminalView key={s.id} session={s} active={s.id === activeId} />
+              <TerminalView
+                key={s.id}
+                session={s}
+                active={s.id === activeId}
+                refocusSignal={refocusTick}
+              />
             ))}
           </div>
           {active && browserOpen[active.id] && (

@@ -493,15 +493,18 @@ body {
   filter: none;
 }
 /* Archived list under a workspace (reuses .ws-issues-* layout for the toggle). */
+/* Same left indent as the Issues section so the toggles line up. */
 .ws-archived {
-  margin-top: 2px;
+  padding: 0 10px 4px 24px;
+  font-size: 11px;
+  color: var(--muted);
 }
 .archived-item {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 8px 3px 18px;
-  font-size: 12px;
+  padding: 3px 6px 3px 2px;
+  font-size: 11px;
   color: var(--muted);
 }
 .archived-item .archived-name {

@@ -283,6 +283,13 @@ export function Sidebar({
               </div>
               {!isCollapsed && <WorkspaceGit path={ws.path} />}
               {!isCollapsed && (
+                <WorkspaceArchived
+                  items={archived.filter((a) => a.workspaceId === ws.id)}
+                  onRestore={onRestoreArchived}
+                  onDelete={onDeleteArchived}
+                />
+              )}
+              {!isCollapsed && (
                 <WorkspaceIssues
                   workspaceId={ws.id}
                   path={ws.path}
@@ -299,13 +306,6 @@ export function Sidebar({
                     <li className="ws-empty">No sessions yet</li>
                   )}
                 </ul>
-              )}
-              {!isCollapsed && (
-                <WorkspaceArchived
-                  items={archived.filter((a) => a.workspaceId === ws.id)}
-                  onRestore={onRestoreArchived}
-                  onDelete={onDeleteArchived}
-                />
               )}
             </div>
           )

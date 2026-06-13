@@ -49,7 +49,9 @@ let seq = 0
 
 /** Canonical options for the Cockpit Dev session: plain `claude`, no browser. */
 const DEV_SESSION_OPTIONS: SessionOptions = {
-  dangerouslySkipPermissions: false,
+  // The dev session works on Cockpit itself in a trusted local repo — skip the
+  // permission prompts so it can iterate freely.
+  dangerouslySkipPermissions: true,
   chrome: false,
   externalChrome: false,
   extraArgs: ''

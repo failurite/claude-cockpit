@@ -11,8 +11,6 @@ import type {
 } from '../shared/types.js'
 import { DEFAULT_SESSION_OPTIONS } from '../shared/types.js'
 import {
-  getSavedName,
-  saveName,
   saveSessions,
   getSavedSessions,
   getArchivedSessions,
@@ -235,8 +233,10 @@ export class SessionManager extends EventEmitter {
       if (liveCmd && liveCmd !== desiredCmd) killCockpitSession(DEV_TMUX_NAME)
     }
     const id = tmuxDev ? DEV_TMUX_NAME : `pane-${++seq}-${Date.now().toString(36)}`
-    const nameKey = `${cwd}::${command}`
-    const name = opts?.name || getSavedName(nameKey) || `Session ${seq}`
+    // New sessions get a generic, unique name; restores carry their persisted name
+    // via opts.name. We deliberately don't inherit the last session's name for the
+    // same cwd/command — a fresh "New session" should look fresh.
+    const name = opts?.name || `Session ${seq}`
 
     let launch: string
     if (tmuxDev) {
@@ -365,7 +365,6 @@ export class SessionManager extends EventEmitter {
     const p = this.panes.get(id)
     if (!p) return
     p.session.name = name
-    saveName(`${p.session.cwd}::${p.session.command}`, name)
     this.patch(id, {})
     this.persist()
   }

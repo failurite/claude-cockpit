@@ -31,12 +31,10 @@ export interface ArchivedSession extends PersistedSession {
 
 /**
  * Tiny JSON-file store for things that should survive restarts:
- *   - user-assigned pane names (keyed by a stable name-key)
- *   - the set of open panes, for restore-on-launch
+ *   - the set of open panes (including their names), for restore-on-launch
  *   - workspaces (directory + default launch options)
  */
 interface Persisted {
-  names: Record<string, string>
   sessions: PersistedSession[]
   /** Closed-but-saved sessions, reopenable on demand (not auto-restored on boot). */
   archived: ArchivedSession[]
@@ -46,7 +44,7 @@ interface Persisted {
 }
 
 function empty(): Persisted {
-  return { names: {}, sessions: [], archived: [], workspaces: [], flags: {} }
+  return { sessions: [], archived: [], workspaces: [], flags: {} }
 }
 
 let cache: Persisted = empty()
@@ -72,15 +70,6 @@ function flush(): void {
   } catch {
     /* best-effort */
   }
-}
-
-export function getSavedName(nameKey: string): string | undefined {
-  return cache.names[nameKey]
-}
-
-export function saveName(nameKey: string, name: string): void {
-  cache.names[nameKey] = name
-  flush()
 }
 
 export function getFlag(key: string): boolean {

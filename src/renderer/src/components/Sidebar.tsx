@@ -222,9 +222,13 @@ export function Sidebar({
                   {isCollapsed ? '▸' : '▾'}
                 </button>
                 <span
-                  className="ws-name link"
-                  title={`${ws.path} · click to open the repo in your browser`}
-                  onClick={() => openRepo(ws.path)}
+                  className={`ws-name ${ws.path ? 'link' : ''}`}
+                  title={
+                    ws.path
+                      ? `${ws.path} · click to open the repo in your browser`
+                      : 'No folder set — edit the workspace to choose one'
+                  }
+                  onClick={() => ws.path && openRepo(ws.path)}
                 >
                   {ws.name}
                 </span>
@@ -281,7 +285,7 @@ export function Sidebar({
                   )}
                 </div>
               </div>
-              {!isCollapsed && <WorkspaceGit path={ws.path} />}
+              {!isCollapsed && ws.path && <WorkspaceGit path={ws.path} />}
               {!isCollapsed && (
                 <WorkspaceArchived
                   items={archived.filter((a) => a.workspaceId === ws.id)}
@@ -289,7 +293,7 @@ export function Sidebar({
                   onDelete={onDeleteArchived}
                 />
               )}
-              {!isCollapsed && (
+              {!isCollapsed && ws.path && (
                 <WorkspaceIssues
                   workspaceId={ws.id}
                   path={ws.path}

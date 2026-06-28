@@ -52,7 +52,11 @@ export function LaunchDialog({
     }
   }
 
-  const canSubmit = mode === 'session' || path.trim().length > 0
+  // A session inherits its workspace; a workspace needs at least a name OR a
+  // folder to identify it — but you can create one before you have either a
+  // directory or a GitHub repo (sessions fall back to your home directory until
+  // you set a folder).
+  const canSubmit = mode === 'session' || path.trim().length > 0 || name.trim().length > 0
   const submit = (): void => {
     if (!canSubmit) return
     onSubmit({ name: name.trim(), path: path.trim(), options })
@@ -65,12 +69,12 @@ export function LaunchDialog({
 
         {mode === 'workspace' && (
           <label className="field">
-            <span>Folder</span>
+            <span>Folder (optional)</span>
             <div className="field-row">
               <input
                 className="text-input mono"
                 value={path}
-                placeholder="/path/to/project"
+                placeholder="/path/to/project — leave blank to set up later"
                 onChange={(e) => setPath(e.target.value)}
               />
               <button className="btn" onClick={browse}>

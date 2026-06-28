@@ -197,7 +197,10 @@ them, sessions still run — you just won't get live status. Manage them anytime
 Settings or per [docs/HOOKS.md](docs/HOOKS.md).
 
 Create a **workspace** (the `+` in the sidebar header) pointed at a project folder,
-then add sessions to it. Double-click a session to rename it.
+then add sessions to it. The folder is optional — you can create a workspace for
+new work before you have a directory or GitHub repo (its sessions start in your
+home directory until you set a folder via **Edit workspace…**). Double-click a
+session to rename it.
 
 ### Install as a standalone app (recommended)
 

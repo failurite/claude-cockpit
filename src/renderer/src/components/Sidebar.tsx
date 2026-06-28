@@ -38,6 +38,8 @@ interface Props {
   /** Define a brand-new workspace (folder + defaults). */
   onNewWorkspace: () => void
   onEditWorkspace: (ws: Workspace) => void
+  /** Rename a workspace in place (double-click its name). */
+  onRenameWorkspace: (id: string, name: string) => void
   onDeleteWorkspace: (id: string) => void
   /** Start (or focus) the dedicated session for a GitHub issue. */
   onStartIssue: (workspaceId: string, number: number) => void
@@ -65,6 +67,7 @@ export function Sidebar({
   onCustomSession,
   onNewWorkspace,
   onEditWorkspace,
+  onRenameWorkspace,
   onDeleteWorkspace,
   onStartIssue,
   issuesRefreshKey,
@@ -76,6 +79,9 @@ export function Sidebar({
   const [draft, setDraft] = useState('')
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [menuFor, setMenuFor] = useState<string | null>(null)
+  // Inline workspace rename (kept separate from session rename so ids can't clash).
+  const [editingWsId, setEditingWsId] = useState<string | null>(null)
+  const [wsDraft, setWsDraft] = useState('')
 
   const startEdit = (s: TerminalSession): void => {
     setEditingId(s.id)
@@ -84,6 +90,14 @@ export function Sidebar({
   const commit = (): void => {
     if (editingId && draft.trim()) onRename(editingId, draft.trim())
     setEditingId(null)
+  }
+  const startWsEdit = (ws: Workspace): void => {
+    setEditingWsId(ws.id)
+    setWsDraft(ws.name)
+  }
+  const commitWs = (): void => {
+    if (editingWsId && wsDraft.trim()) onRenameWorkspace(editingWsId, wsDraft.trim())
+    setEditingWsId(null)
   }
   /** Open the workspace's repo (origin remote) in the system browser. */
   const openRepo = async (path: string): Promise<void> => {
@@ -221,17 +235,39 @@ export function Sidebar({
                 <button className="ws-chevron" onClick={() => toggleCollapse(ws.id)}>
                   {isCollapsed ? '▸' : '▾'}
                 </button>
-                <span
-                  className={`ws-name ${ws.path ? 'link' : ''}`}
-                  title={
-                    ws.path
-                      ? `${ws.path} · click to open the repo in your browser`
-                      : 'No folder set — edit the workspace to choose one'
-                  }
-                  onClick={() => ws.path && openRepo(ws.path)}
-                >
-                  {ws.name}
-                </span>
+                {editingWsId === ws.id ? (
+                  <input
+                    className="rename-input ws-name-input"
+                    autoFocus
+                    value={wsDraft}
+                    onChange={(e) => setWsDraft(e.target.value)}
+                    onBlur={commitWs}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') commitWs()
+                      if (e.key === 'Escape') setEditingWsId(null)
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                ) : (
+                  <span
+                    className={`ws-name ${ws.path ? 'link' : ''}`}
+                    title={
+                      ws.id === COCKPIT_WORKSPACE_ID
+                        ? ws.path
+                        : ws.path
+                          ? `${ws.path} · click to open the repo · double-click to rename`
+                          : 'No folder set — double-click to rename, or edit to choose one'
+                    }
+                    onClick={() => ws.path && openRepo(ws.path)}
+                    onDoubleClick={(e) => {
+                      if (ws.id === COCKPIT_WORKSPACE_ID) return
+                      e.stopPropagation()
+                      startWsEdit(ws)
+                    }}
+                  >
+                    {ws.name}
+                  </span>
+                )}
                 <button
                   className="ws-btn"
                   title="New session (workspace defaults)"
@@ -285,6 +321,14 @@ export function Sidebar({
                   )}
                 </div>
               </div>
+              {!isCollapsed && (
+                <div
+                  className="ws-path mono"
+                  title={ws.path || 'No folder set — sessions start in your home directory'}
+                >
+                  {ws.path || 'No folder yet'}
+                </div>
+              )}
               {!isCollapsed && ws.path && <WorkspaceGit path={ws.path} />}
               {!isCollapsed && (
                 <WorkspaceArchived

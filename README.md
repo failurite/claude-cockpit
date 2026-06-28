@@ -199,8 +199,9 @@ Settings or per [docs/HOOKS.md](docs/HOOKS.md).
 Create a **workspace** (the `+` in the sidebar header) pointed at a project folder,
 then add sessions to it. The folder is optional — you can create a workspace for
 new work before you have a directory or GitHub repo (its sessions start in your
-home directory until you set a folder via **Edit workspace…**). Double-click a
-session to rename it.
+home directory until you set a folder via **Edit workspace…**). Each workspace
+shows its folder on disk beneath its name. Double-click a workspace **or** a
+session name to rename it in place.
 
 ### Install as a standalone app (recommended)
 

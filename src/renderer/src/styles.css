@@ -459,6 +459,27 @@ body {
   padding: 1px 4px;
   width: 100%;
 }
+/* Inline workspace rename: match the ws-name typography (small, uppercase). */
+.ws-name-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+/* The workspace's folder on disk, shown under its header. */
+.ws-path {
+  padding: 0 8px 4px 22px;
+  margin-top: -2px;
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
 .close-btn {
   visibility: hidden;
   background: transparent;

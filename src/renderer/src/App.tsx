@@ -182,6 +182,17 @@ export default function App(): JSX.Element {
     setWorkspaces(await window.cockpit.workspaces.remove(id))
   }, [])
 
+  // Inline rename (double-click the workspace name) — saves the workspace with a
+  // new name, leaving its folder + defaults untouched.
+  const renameWorkspace = useCallback(
+    async (id: string, name: string) => {
+      const ws = workspaces.find((w) => w.id === id)
+      if (!ws || !name.trim() || name.trim() === ws.name) return
+      setWorkspaces(await window.cockpit.workspaces.save({ ...ws, name: name.trim() }))
+    },
+    [workspaces]
+  )
+
   // --- dialog submit handlers ---
   const submitDialog = useCallback(
     async (v: LaunchValues) => {
@@ -197,7 +208,12 @@ export default function App(): JSX.Element {
         const s = await window.cockpit.createSession({ workspaceId: ws.id })
         setActiveId(s.id)
       } else if (dialog.kind === 'workspace-edit') {
-        const ws: Workspace = { ...dialog.ws, name: v.name || dialog.ws.name, defaults: v.options }
+        const ws: Workspace = {
+          ...dialog.ws,
+          name: v.name || dialog.ws.name,
+          path: v.path,
+          defaults: v.options
+        }
         setWorkspaces(await window.cockpit.workspaces.save(ws))
       } else if (dialog.kind === 'session-custom') {
         const s = await window.cockpit.createSession({
@@ -265,6 +281,7 @@ export default function App(): JSX.Element {
             onCustomSession={(workspaceId) => setDialog({ kind: 'session-custom', workspaceId })}
             onNewWorkspace={() => setDialog({ kind: 'workspace-new' })}
             onEditWorkspace={(ws) => setDialog({ kind: 'workspace-edit', ws })}
+            onRenameWorkspace={renameWorkspace}
             onDeleteWorkspace={deleteWorkspace}
             onStartIssue={startIssue}
             issuesRefreshKey={issuesRefreshKey}

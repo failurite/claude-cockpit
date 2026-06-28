@@ -200,6 +200,10 @@ claude (pane)  ──spawns──►  mcp/cockpit-browser.mjs   (stdio MCP serve
   it. User-initiated loads (URL bar, tab clicks) are *not* tagged, so manual
   browsing keeps focus. `executeJavaScript`/`capturePage` work without OS focus,
   so this never hampers the agent's tools.
+- **Layering:** a native `WebContentsView` always paints *over* renderer HTML, so
+  an app-level modal (workspace/session dialog, Settings) would be covered. The
+  renderer calls `browser.setOverlaySuppressed(true)` whenever a modal is open;
+  `BrowserManager.relayout()` then force-hides every view until it's dismissed.
 - **Profile:** all tabs share one persistent partition
   (`persist:cockpit-browser`) so logins survive restarts, with the
   `Electron`/app tokens stripped from the user agent so sign-in pages don't

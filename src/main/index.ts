@@ -294,6 +294,11 @@ async function bootstrap(): Promise<void> {
   ipcMain.on('browser:set-visible', (_e, paneId: string, visible: boolean) =>
     browserMgr.setVisible(paneId, visible)
   )
+  // App-level modals ask us to force-hide the native browser overlay so it
+  // doesn't paint over the dialog.
+  ipcMain.on('browser:suppress-overlay', (_e, suppressed: boolean) =>
+    browserMgr.setOverlaySuppressed(suppressed)
+  )
 
   // ---- GitHub issues → dedicated sessions ----
   ipcMain.handle('issues:available', (_e, dir: string) => ghAvailable(expandTilde(dir)))

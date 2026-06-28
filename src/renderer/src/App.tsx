@@ -102,6 +102,13 @@ export default function App(): JSX.Element {
     }
   }, [sessions, activeId])
 
+  // An app-level modal (workspace/session dialog or Settings) must sit above
+  // everything — but the embedded browser is a native overlay that always paints
+  // over renderer HTML. Force it hidden while any modal is open.
+  useEffect(() => {
+    window.cockpit.browser.setOverlaySuppressed(!!dialog || settingsOpen)
+  }, [dialog, settingsOpen])
+
   // Auto-reveal a pane's browser the moment the agent opens its first tab.
   useEffect(() => {
     const off = window.cockpit.browser.onTabsChanged((paneId, tabs) => {

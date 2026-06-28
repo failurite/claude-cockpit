@@ -79,6 +79,8 @@ const api: CockpitApi = {
     navigate: (paneId, tabId, url) => ipcRenderer.invoke('browser:navigate', paneId, tabId, url),
     setBounds: (paneId, bounds) => ipcRenderer.send('browser:set-bounds', paneId, bounds),
     setVisible: (paneId, visible) => ipcRenderer.send('browser:set-visible', paneId, visible),
+    setOverlaySuppressed: (suppressed) =>
+      ipcRenderer.send('browser:suppress-overlay', suppressed),
     onTabsChanged: (cb) => {
       browserTabSubs.add(cb)
       return () => browserTabSubs.delete(cb)

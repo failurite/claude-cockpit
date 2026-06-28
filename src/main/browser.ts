@@ -44,6 +44,13 @@ export class BrowserManager extends EventEmitter {
   private win: BrowserWindow | null = null
   /** The single pane whose browser is currently visible (others are hidden). */
   private foreground: string | null = null
+  /**
+   * When true, ALL browser views are force-hidden regardless of foreground —
+   * used while an app-level modal (e.g. a workspace dialog) is open, since a
+   * native WebContentsView always paints over renderer HTML and would otherwise
+   * cover the modal.
+   */
+  private suppressed = false
   private seq = 0
 
   constructor() {
@@ -173,6 +180,17 @@ export class BrowserManager extends EventEmitter {
     this.relayout()
   }
 
+  /**
+   * Force-hide every browser view (suppressed=true) or resume normal layout
+   * (false). Called when an app-level modal opens/closes so the native overlay
+   * doesn't paint over it.
+   */
+  setOverlaySuppressed(suppressed: boolean): void {
+    if (this.suppressed === suppressed) return
+    this.suppressed = suppressed
+    this.relayout()
+  }
+
   /** Drop a pane's whole browser (called when its session closes). */
   disposePane(paneId: string): void {
     const pb = this.panes.get(paneId)
@@ -278,7 +296,7 @@ export class BrowserManager extends EventEmitter {
     if (!this.win) return
     const fg = this.foreground ? this.panes.get(this.foreground) : null
     for (const [paneId, pb] of this.panes) {
-      const isForeground = paneId === this.foreground && !!fg?.bounds
+      const isForeground = !this.suppressed && paneId === this.foreground && !!fg?.bounds
       for (const tab of pb.tabs) {
         const show = isForeground && tab.id === pb.activeTabId
         tab.view.setVisible(show)

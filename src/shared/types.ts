@@ -308,6 +308,12 @@ export interface CockpitApi {
     setBounds(paneId: string, bounds: BrowserBounds | null): void
     /** Show or hide a pane's browser overlay (only one pane is foreground at a time). */
     setVisible(paneId: string, visible: boolean): void
+    /**
+     * Force-hide every browser overlay (true) or resume normal layout (false).
+     * Used while an app-level modal is open, since the native overlay would
+     * otherwise paint over it.
+     */
+    setOverlaySuppressed(suppressed: boolean): void
     /** Subscribe to tab-list changes for any pane. Returns an unsubscribe fn. */
     onTabsChanged(cb: (paneId: string, tabs: BrowserTab[]) => void): () => void
   }

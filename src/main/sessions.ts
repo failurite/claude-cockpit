@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events'
+import { existsSync, mkdirSync, statSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import pty from '@homebridge/node-pty-prebuilt-multiarch'
@@ -65,6 +66,27 @@ export function expandTilde(p: string): string {
   if (p === '~') return homedir()
   if (p.startsWith('~/')) return join(homedir(), p.slice(2))
   return p
+}
+
+/**
+ * Resolve a directory a pty can actually spawn in. node-pty exits the process
+ * immediately if `cwd` doesn't exist — which is exactly what a folder-less
+ * workspace (blank path) or a "set up later" path that isn't created yet would
+ * hit. So: blank → home dir; a path that doesn't exist → create it (the "new
+ * work" intent); if creating fails (typo, permissions) → fall back to home dir
+ * so the session always launches instead of silently exiting.
+ */
+function resolveSpawnDir(raw: string | undefined): string {
+  const home = homedir()
+  const dir = expandTilde((raw ?? '').trim())
+  if (!dir) return home
+  try {
+    if (existsSync(dir)) return statSync(dir).isDirectory() ? dir : home
+    mkdirSync(dir, { recursive: true })
+    return dir
+  } catch {
+    return home
+  }
 }
 
 /**
@@ -204,7 +226,7 @@ export class SessionManager extends EventEmitter {
     /** Kickoff prompt passed to claude on first launch (not on resume). */
     initialPrompt?: string
   }): TerminalSession {
-    const cwd = expandTilde(opts?.cwd || homedir())
+    const cwd = resolveSpawnDir(opts?.cwd)
     const command = opts?.command || 'claude'
     const kind = opts?.kind || 'normal'
     // The dev session is special: ALWAYS plain `claude` (no browser), regardless

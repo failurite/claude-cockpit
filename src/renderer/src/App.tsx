@@ -198,9 +198,12 @@ export default function App(): JSX.Element {
     async (v: LaunchValues) => {
       if (!dialog) return
       if (dialog.kind === 'workspace-new') {
+        // Derive a name from the folder when none was typed; '~' (the default
+        // root) reads as "Home" rather than a literal tilde.
+        const base = v.path === '~' ? 'Home' : v.path.split('/').filter(Boolean).pop()
         const ws: Workspace = {
           id: crypto.randomUUID(),
-          name: v.name || v.path.split('/').filter(Boolean).pop() || v.path,
+          name: v.name || base || v.path || 'Workspace',
           path: v.path,
           defaults: v.options
         }
@@ -238,7 +241,7 @@ export default function App(): JSX.Element {
         mode: 'workspace',
         title: 'New workspace',
         submit: 'Create workspace',
-        initial: { name: '', path: '', options: { ...DEFAULT_SESSION_OPTIONS } }
+        initial: { name: '', path: '~', options: { ...DEFAULT_SESSION_OPTIONS } }
       }
     if (dialog.kind === 'workspace-edit')
       return {

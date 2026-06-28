@@ -412,6 +412,13 @@ export class SessionManager extends EventEmitter {
     for (const id of [...this.panes.keys()]) this.close(id)
   }
 
+  /** Close every live pane belonging to a workspace (used when it's removed). */
+  closeForWorkspace(workspaceId: string): void {
+    for (const [id, p] of [...this.panes.entries()]) {
+      if (p.session.workspaceId === workspaceId) this.close(id)
+    }
+  }
+
   /**
    * Archive a pane: capture its full launch record (conversation id + current
    * browser tabs) into the archived store, then tear the live pane down like

@@ -575,6 +575,8 @@ function upsertWorkspace(ws: Workspace): Workspace[] {
 /** Remove a workspace by id; returns the remaining list. (Hide Cockpit via Settings instead.) */
 function removeWorkspace(id: string): Workspace[] {
   if (id !== COCKPIT_WORKSPACE_ID) {
+    // Close its live sessions too — leaving them orphaned in "Other" is confusing.
+    manager.closeForWorkspace(id)
     saveWorkspaces(getWorkspaces().filter((w) => w.id !== id))
   }
   return listAllWorkspaces()

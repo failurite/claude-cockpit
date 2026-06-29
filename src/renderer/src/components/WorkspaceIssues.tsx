@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { IssueSummary, TerminalSession } from '../../../shared/types'
+import { useGitStatus } from '../hooks/useGitStatus'
 
 interface Props {
   /** Workspace identity + repo path (issues are fetched via gh in this dir). */
@@ -24,7 +25,7 @@ export function WorkspaceIssues({
   sessions,
   onStart,
   refreshSignal
-}: Props): JSX.Element {
+}: Props): JSX.Element | null {
   const [open, setOpen] = useState(false)
   const [issues, setIssues] = useState<IssueSummary[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -34,6 +35,11 @@ export function WorkspaceIssues({
   /** Which issue's detail is expanded, and a cache of fetched bodies. */
   const [expanded, setExpanded] = useState<number | null>(null)
   const [bodies, setBodies] = useState<Record<number, string>>({})
+
+  // Only a GitHub-backed repo has issues — don't show the section (and don't
+  // imply it's a GitHub project) for a local-only repo or a non-GitHub remote.
+  const { status } = useGitStatus(path)
+  const isGitHub = !!status?.isRepo && /github/i.test(status.remoteUrl ?? '')
 
   const refresh = async (): Promise<void> => {
     setLoading(true)
@@ -85,6 +91,8 @@ export function WorkspaceIssues({
       next.has(l) ? next.delete(l) : next.add(l)
       return next
     })
+
+  if (!isGitHub) return null
 
   const allLabels = [...new Set((issues ?? []).flatMap((i) => i.labels))].sort()
   const visible = (issues ?? []).filter(

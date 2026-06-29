@@ -1,29 +1,16 @@
-import { useEffect, useState } from 'react'
-import type { GitStatus } from '../../../shared/types'
+import { useState } from 'react'
+import { useGitStatus } from '../hooks/useGitStatus'
 
 /**
  * Compact git row for a workspace: branch, ↑unpushed / ↓unpulled, dirty marker,
  * and manual Pull / Push / fetch-refresh. Renders nothing if the folder isn't a
- * git repo. The unpulled count is only accurate after a fetch, so ⟳ fetches.
+ * git repo. Polls (via useGitStatus) so a repo that's created/pushed after the
+ * row mounts still appears. The unpulled count is only accurate after a fetch.
  */
 export function WorkspaceGit({ path }: { path: string }): JSX.Element | null {
-  const [st, setSt] = useState<GitStatus | null>(null)
+  const { status: st, reload } = useGitStatus(path)
   const [busy, setBusy] = useState<'' | 'pull' | 'push' | 'refresh'>('')
   const [msg, setMsg] = useState<string | null>(null)
-
-  const load = async (fetch: boolean): Promise<void> => {
-    setSt(await window.cockpit.git.status(path, fetch))
-  }
-
-  // Quick local read on mount; a background fetch updates the unpulled count.
-  useEffect(() => {
-    let alive = true
-    window.cockpit.git.status(path, false).then((s) => alive && setSt(s))
-    window.cockpit.git.status(path, true).then((s) => alive && setSt(s))
-    return () => {
-      alive = false
-    }
-  }, [path])
 
   if (!st || !st.isRepo) return null
 
@@ -35,7 +22,7 @@ export function WorkspaceGit({ path }: { path: string }): JSX.Element | null {
     setMsg(null)
     const r = await fn()
     if (r && 'message' in r) setMsg(r.message)
-    await load(true)
+    await reload(true)
     setBusy('')
   }
 
@@ -80,7 +67,7 @@ export function WorkspaceGit({ path }: { path: string }): JSX.Element | null {
       <button
         className="ws-git-btn"
         disabled={!!busy}
-        onClick={() => run('refresh', async () => load(true))}
+        onClick={() => run('refresh', async () => undefined)}
         title="Fetch &amp; refresh"
       >
         {busy === 'refresh' ? '…' : '⟳'}

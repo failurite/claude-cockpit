@@ -19,7 +19,7 @@ import {
   type PersistedSession,
   type ArchivedSession
 } from './store.js'
-import { watchTranscriptForSession } from './transcripts.js'
+import { watchTranscriptForSession, transcriptExists } from './transcripts.js'
 import {
   isTmuxAvailable,
   devLaunchCommand,
@@ -260,6 +260,13 @@ export class SessionManager extends EventEmitter {
     // same cwd/command — a fresh "New session" should look fresh.
     const name = opts?.name || `Session ${seq}`
 
+    // Only resume if the conversation's transcript still exists — otherwise
+    // `claude --resume <id>` leaves a pane stuck on "No conversation found with
+    // session ID" (the transcript was deleted, cloud-evicted, or from another
+    // machine). Fall back to a fresh session instead.
+    const resumeId =
+      opts?.resumeId && transcriptExists(opts.resumeId) ? opts.resumeId : null
+
     let launch: string
     if (tmuxDev) {
       // attach-or-create the persistent dev session; tmux keeps claude alive.
@@ -274,9 +281,9 @@ export class SessionManager extends EventEmitter {
               // Kickoff prompt (e.g. issue context) — only on first launch, not on
               // resume. It MUST precede the flags: `--mcp-config <configs...>` is
               // variadic and would swallow a trailing positional as a config path.
-              ...(opts?.initialPrompt && !opts?.resumeId ? [quoteArg(opts.initialPrompt)] : []),
+              ...(opts?.initialPrompt && !resumeId ? [quoteArg(opts.initialPrompt)] : []),
               ...claudeFlags(options, this.browser.mcpConfig, this.sessions.mcpConfig),
-              ...(opts?.resumeId ? ['--resume', opts.resumeId] : [])
+              ...(resumeId ? ['--resume', resumeId] : [])
             ]
           : [command]
       launch = parts.join(' ')

@@ -16,6 +16,16 @@ function locate(sessionId: string): string | null {
 }
 
 /**
+ * True if a transcript exists for this Claude session id. Used to avoid
+ * `claude --resume <id>` on a conversation whose transcript is gone (deleted,
+ * cloud-evicted, or from another machine) — which would otherwise leave a broken
+ * pane stuck on "No conversation found with session ID".
+ */
+export function transcriptExists(sessionId: string): boolean {
+  return locate(sessionId) !== null
+}
+
+/**
  * Count *active* sub-agents by scanning the transcript for `Task` tool calls
  * that don't yet have a matching tool_result. This is a heuristic (v1) but maps
  * directly to the sidechains Claude spawns.

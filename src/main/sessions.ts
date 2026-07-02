@@ -267,51 +267,15 @@ export class SessionManager extends EventEmitter {
     const resumeId =
       opts?.resumeId && transcriptExists(opts.resumeId) ? opts.resumeId : null
 
-    let launch: string
-    if (tmuxDev) {
-      // attach-or-create the persistent dev session; tmux keeps claude alive.
-      // Flags (e.g. --dangerously-skip-permissions --chrome) apply on first create.
-      launch = devLaunchCommand(cwd, claudeFlags(options))
-    } else {
-      // Build `claude <flags> [--resume <id>]`. Non-claude commands launch verbatim.
-      const parts =
-        command === 'claude'
-          ? [
-              'claude',
-              // Kickoff prompt (e.g. issue context) — only on first launch, not on
-              // resume. It MUST precede the flags: `--mcp-config <configs...>` is
-              // variadic and would swallow a trailing positional as a config path.
-              ...(opts?.initialPrompt && !resumeId ? [quoteArg(opts.initialPrompt)] : []),
-              ...claudeFlags(options, this.browser.mcpConfig, this.sessions.mcpConfig),
-              ...(resumeId ? ['--resume', resumeId] : [])
-            ]
-          : [command]
-      launch = parts.join(' ')
-    }
-
-    // Spawn a shell that runs the launch command so the pane *is* claude with no
-    // lingering prompt. The shell + args differ per OS (login zsh `exec` on POSIX,
-    // `cmd.exe /c` on Windows) — see platform.ts.
-    const { shell, args } = buildShellInvocation(launch)
-
-    const proc = pty.spawn(shell, args, {
-      name: 'xterm-256color',
-      cols: 80,
-      rows: 24,
+    const launch = this.buildLaunch({
+      command,
       cwd,
-      env: {
-        ...process.env,
-        CLAUDE_COCKPIT: '1',
-        CLAUDE_COCKPIT_PANE_ID: id,
-        CLAUDE_COCKPIT_INGEST_PORT: String(this.ingestPort),
-        // The cockpit-browser MCP shim (spawned by claude) inherits this to reach
-        // the app's browser RPC endpoint, scoped to this pane.
-        CLAUDE_COCKPIT_BROWSER_PORT: String(this.browser.port),
-        // The cockpit-sessions MCP shim inherits this to reach the app's
-        // cross-session RPC endpoint (list/read sibling sessions), scoped to this pane.
-        CLAUDE_COCKPIT_SESSIONS_PORT: String(this.sessions.port)
-      } as Record<string, string>
+      options,
+      resumeId,
+      initialPrompt: opts?.initialPrompt,
+      tmuxDev
     })
+    const proc = this.spawnPty(id, cwd, launch)
 
     const session: TerminalSession = {
       id,
@@ -341,19 +305,143 @@ export class SessionManager extends EventEmitter {
       setTimeout(() => enableMouse(DEV_TMUX_NAME), 4000)
     }
 
-    proc.onData((chunk) => {
-      pane.buffer += chunk
-      if (pane.buffer.length > MAX_BUFFER) pane.buffer = pane.buffer.slice(-MAX_BUFFER)
-      this.emit('data', id, chunk)
-    })
-    proc.onExit(() => {
-      this.patch(id, { status: 'exited', lastActivity: 'process exited' })
-      pane.unwatch?.()
-    })
+    this.wireProc(pane, id)
 
     this.emitSessions()
     this.persist()
     return session
+  }
+
+  /**
+   * Build the `claude` launch command line for a pane. Extracted so create() and
+   * restart() stay in lockstep (same flags, same resume/kickoff ordering).
+   */
+  private buildLaunch(o: {
+    command: string
+    cwd: string
+    options: SessionOptions
+    resumeId: string | null
+    initialPrompt?: string
+    tmuxDev: boolean
+  }): string {
+    if (o.tmuxDev) {
+      // attach-or-create the persistent dev session; tmux keeps claude alive.
+      // Flags (e.g. --dangerously-skip-permissions --chrome) apply on first create.
+      return devLaunchCommand(o.cwd, claudeFlags(o.options))
+    }
+    // Build `claude <flags> [--resume <id>]`. Non-claude commands launch verbatim.
+    const parts =
+      o.command === 'claude'
+        ? [
+            'claude',
+            // Kickoff prompt (e.g. issue context) — only on first launch, not on
+            // resume. It MUST precede the flags: `--mcp-config <configs...>` is
+            // variadic and would swallow a trailing positional as a config path.
+            ...(o.initialPrompt && !o.resumeId ? [quoteArg(o.initialPrompt)] : []),
+            ...claudeFlags(o.options, this.browser.mcpConfig, this.sessions.mcpConfig),
+            ...(o.resumeId ? ['--resume', o.resumeId] : [])
+          ]
+        : [o.command]
+    return parts.join(' ')
+  }
+
+  /**
+   * Spawn a shell that runs the launch command so the pane *is* claude with no
+   * lingering prompt. The shell + args differ per OS (login zsh `exec` on POSIX,
+   * `cmd.exe /c` on Windows) — see platform.ts. The pane-scoped env lets the hook
+   * + MCP shims phone home to the right pane.
+   */
+  private spawnPty(id: string, cwd: string, launch: string): IPty {
+    const { shell, args } = buildShellInvocation(launch)
+    return pty.spawn(shell, args, {
+      name: 'xterm-256color',
+      cols: 80,
+      rows: 24,
+      cwd,
+      env: {
+        ...process.env,
+        CLAUDE_COCKPIT: '1',
+        CLAUDE_COCKPIT_PANE_ID: id,
+        CLAUDE_COCKPIT_INGEST_PORT: String(this.ingestPort),
+        // The cockpit-browser MCP shim (spawned by claude) inherits this to reach
+        // the app's browser RPC endpoint, scoped to this pane.
+        CLAUDE_COCKPIT_BROWSER_PORT: String(this.browser.port),
+        // The cockpit-sessions MCP shim inherits this to reach the app's
+        // cross-session RPC endpoint (list/read sibling sessions), scoped to this pane.
+        CLAUDE_COCKPIT_SESSIONS_PORT: String(this.sessions.port)
+      } as Record<string, string>
+    })
+  }
+
+  /** Wire a pane's pty output → buffer + 'data' event, and exit → status. */
+  private wireProc(pane: Pane, id: string): void {
+    pane.proc.onData((chunk) => {
+      pane.buffer += chunk
+      if (pane.buffer.length > MAX_BUFFER) pane.buffer = pane.buffer.slice(-MAX_BUFFER)
+      this.emit('data', id, chunk)
+    })
+    pane.proc.onExit(() => {
+      this.patch(id, { status: 'exited', lastActivity: 'process exited' })
+      pane.unwatch?.()
+    })
+  }
+
+  /**
+   * Relaunch a session's `claude` process in place — same pane, same position,
+   * resuming its conversation (via `--resume`) so state is retained as much as
+   * possible. Useful to pick up a newly-available model or apply changed launch
+   * options without losing the conversation. The dev (tmux) session is exempt —
+   * restarting it would kill the very session driving Cockpit.
+   */
+  restart(id: string, optionOverrides?: Partial<SessionOptions>): TerminalSession | null {
+    const p = this.panes.get(id)
+    if (!p || p.session.kind === 'dev' || p.session.command !== 'claude') return null
+    const s = p.session
+    const options = optionOverrides ? { ...s.options, ...optionOverrides } : s.options
+    // Resume the same conversation if its transcript still exists; otherwise start
+    // fresh and forget the stale id so the hook can bind the new conversation.
+    const resumeId = s.claudeSessionId && transcriptExists(s.claudeSessionId) ? s.claudeSessionId : null
+
+    // Tear down the old process + transcript watch.
+    p.unwatch?.()
+    p.unwatch = undefined
+    try {
+      p.proc.kill()
+    } catch {
+      /* already dead */
+    }
+    if (!resumeId && s.claudeSessionId) {
+      this.claudeIndex.delete(s.claudeSessionId)
+      s.claudeSessionId = null
+    }
+
+    const cwd = resolveSpawnDir(s.cwd)
+    const launch = this.buildLaunch({ command: s.command, cwd, options, resumeId, tmuxDev: false })
+    p.buffer = ''
+    p.proc = this.spawnPty(id, cwd, launch)
+    this.wireProc(p, id)
+
+    // Re-attach the sub-agent transcript watch for a resumed conversation (its
+    // claudeSessionId is unchanged, so bindClaudeSession would no-op).
+    if (resumeId) {
+      p.unwatch = watchTranscriptForSession(resumeId, (count) =>
+        this.patch(id, { subagentCount: count })
+      )
+    }
+
+    Object.assign(s, {
+      options,
+      status: 'starting' as SessionStatus,
+      subagentCount: 0,
+      usingChrome: false,
+      chromeActivity: null,
+      lastActivity: 'restarting',
+      updatedAt: Date.now()
+    })
+    this.emit('reset', id) // tell the renderer to clear the now-stale terminal view
+    this.emitSessions()
+    this.persist()
+    return s
   }
 
   /** Output captured so far (for replay when a terminal view mounts). */

@@ -224,6 +224,13 @@ async function bootstrap(): Promise<void> {
     }
   })
   manager.on('sessions', broadcastSessions)
+  // A restarted pane keeps its id but its terminal content is stale — tell the
+  // renderer to clear that xterm view before the relaunched claude repaints.
+  manager.on('reset', (paneId: string) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('pty:reset', paneId)
+    }
+  })
   manager.on('closed', (paneId: string) => browserMgr.disposePane(paneId))
   browserMgr.on('tabs', (paneId: string, tabs: unknown) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -237,6 +244,7 @@ async function bootstrap(): Promise<void> {
   ipcMain.handle('sessions:list', () => manager.list())
   ipcMain.handle('sessions:create', (_e, opts) => createSession(opts))
   ipcMain.handle('sessions:close', (_e, id: string) => manager.close(id))
+  ipcMain.handle('sessions:restart', (_e, id: string) => manager.restart(id))
   ipcMain.handle('sessions:close-all', () => {
     manager.closeAll()
     killAllCockpitSessions() // sweep any tmux the dev session left behind

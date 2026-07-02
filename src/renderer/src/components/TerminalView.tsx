@@ -51,6 +51,9 @@ export function TerminalView({ session, active, refocusSignal }: Props): JSX.Ele
     const id = session.id
     const input = term.onData((data) => window.cockpit.write(id, data))
     const off = window.cockpit.onData(id, (data) => term.write(data))
+    // A restart relaunches the pty behind the same pane id — wipe the stale
+    // scrollback so the resumed claude repaints into a clean view.
+    const offReset = window.cockpit.onReset(id, () => term.reset())
     window.cockpit.attach(id).then((buf) => {
       if (buf) term.write(buf)
       refit()
@@ -64,6 +67,7 @@ export function TerminalView({ session, active, refocusSignal }: Props): JSX.Ele
     return () => {
       input.dispose()
       off()
+      offReset()
       ro.disconnect()
       term.dispose()
       termRef.current = null

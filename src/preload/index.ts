@@ -3,6 +3,7 @@ import type { BrowserTab, CockpitApi, TerminalSession, UpdateStatus } from '../s
 
 // Fan-out of broadcast IPC events to per-pane / global subscribers in the renderer.
 const dataSubs = new Map<string, Set<(data: string) => void>>()
+const resetSubs = new Map<string, Set<() => void>>()
 const sessionSubs = new Set<(s: TerminalSession[]) => void>()
 const updateSubs = new Set<(s: UpdateStatus) => void>()
 const browserTabSubs = new Set<(paneId: string, tabs: BrowserTab[]) => void>()
@@ -10,6 +11,9 @@ const refocusSubs = new Set<() => void>()
 
 ipcRenderer.on('pty:data', (_e, paneId: string, data: string) => {
   dataSubs.get(paneId)?.forEach((cb) => cb(data))
+})
+ipcRenderer.on('pty:reset', (_e, paneId: string) => {
+  resetSubs.get(paneId)?.forEach((cb) => cb())
 })
 ipcRenderer.on('sessions:changed', (_e, sessions: TerminalSession[]) => {
   sessionSubs.forEach((cb) => cb(sessions))
@@ -29,6 +33,7 @@ const api: CockpitApi = {
   createSession: (opts) => ipcRenderer.invoke('sessions:create', opts),
   createDevSession: () => ipcRenderer.invoke('sessions:create-dev'),
   closeSession: (id) => ipcRenderer.invoke('sessions:close', id),
+  restartSession: (id) => ipcRenderer.invoke('sessions:restart', id),
   closeAllSessions: () => ipcRenderer.invoke('sessions:close-all'),
   renameSession: (id, name) => ipcRenderer.invoke('sessions:rename', id, name),
   archiveSession: (id) => ipcRenderer.invoke('sessions:archive', id),
@@ -41,6 +46,12 @@ const api: CockpitApi = {
   onData: (id, cb) => {
     let set = dataSubs.get(id)
     if (!set) dataSubs.set(id, (set = new Set()))
+    set.add(cb)
+    return () => set!.delete(cb)
+  },
+  onReset: (id, cb) => {
+    let set = resetSubs.get(id)
+    if (!set) resetSubs.set(id, (set = new Set()))
     set.add(cb)
     return () => set!.delete(cb)
   },

@@ -247,6 +247,13 @@ export interface CockpitApi {
     remove(id: string): Promise<Workspace[]>
   }
   closeSession(id: string): Promise<void>
+  /**
+   * Relaunch a session's claude process in place (same pane + position),
+   * resuming its conversation so state is retained. Returns the updated session,
+   * or null if it can't be restarted (e.g. the dev session). Handy to pick up a
+   * newly-available model without losing the conversation.
+   */
+  restartSession(id: string): Promise<TerminalSession | null>
   /** Close every session (kills all ptys) and kill all cockpit tmux; returns remaining tmux names. */
   closeAllSessions(): Promise<string[]>
   /** Archive a session: close it but save its conversation + browser tabs to reopen later. Returns the updated archived list. */
@@ -264,6 +271,8 @@ export interface CockpitApi {
   resize(id: string, cols: number, rows: number): void
   /** Subscribe to pty output for a pane. Returns an unsubscribe fn. */
   onData(id: string, cb: (data: string) => void): () => void
+  /** Fires when a pane's pty was relaunched (restart) — the view should clear. */
+  onReset(id: string, cb: () => void): () => void
   /** Get pty output captured before the view mounted (replay), then onData for live. */
   attach(id: string): Promise<string>
   /** Subscribe to session-list changes (status, names, subagents, add/remove). */

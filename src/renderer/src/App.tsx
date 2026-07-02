@@ -123,6 +123,10 @@ export default function App(): JSX.Element {
   }, [])
 
   const closeSession = useCallback((id: string) => window.cockpit.closeSession(id), [])
+  const restartSession = useCallback(async (id: string) => {
+    const s = await window.cockpit.restartSession(id)
+    if (s) setActiveId(s.id)
+  }, [])
 
   // Archive (close & save) / reopen / forget. Each refreshes the archived list.
   const archiveSession = useCallback(async (id: string) => {
@@ -275,6 +279,7 @@ export default function App(): JSX.Element {
             activeId={activeId}
             onSelect={setActiveId}
             onClose={closeSession}
+            onRestart={restartSession}
             onArchive={archiveSession}
             archived={archived}
             onRestoreArchived={restoreArchived}

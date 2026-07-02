@@ -24,6 +24,8 @@ interface Props {
   activeId: string | null
   onSelect: (id: string) => void
   onClose: (id: string) => void
+  /** Relaunch a session's claude process in place (resumes the conversation). */
+  onRestart: (id: string) => void
   /** Archive a session (close but save to reopen later). */
   onArchive: (id: string) => void
   /** Archived (closed-but-saved) sessions across all workspaces. */
@@ -58,6 +60,7 @@ export function Sidebar({
   activeId,
   onSelect,
   onClose,
+  onRestart,
   onArchive,
   archived,
   onRestoreArchived,
@@ -82,6 +85,8 @@ export function Sidebar({
   // Inline workspace rename (kept separate from session rename so ids can't clash).
   const [editingWsId, setEditingWsId] = useState<string | null>(null)
   const [wsDraft, setWsDraft] = useState('')
+  // Right-click context menu on a session: the session + where to draw the menu.
+  const [ctxMenu, setCtxMenu] = useState<{ s: TerminalSession; x: number; y: number } | null>(null)
 
   const startEdit = (s: TerminalSession): void => {
     setEditingId(s.id)
@@ -126,6 +131,10 @@ export function Sidebar({
       key={s.id}
       className={`session-item ${s.id === activeId ? 'active' : ''}`}
       onClick={() => onSelect(s.id)}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        setCtxMenu({ s, x: e.clientX, y: e.clientY })
+      }}
     >
       <span className={`dot ${s.status}`} title={s.status} />
       <div className="session-main">
@@ -376,6 +385,53 @@ export function Sidebar({
           </div>
         )}
       </div>
+
+      {ctxMenu && (
+        <>
+          <div className="menu-overlay" onClick={() => setCtxMenu(null)} onContextMenu={(e) => { e.preventDefault(); setCtxMenu(null) }} />
+          <div className="ctx-menu" style={{ left: ctxMenu.x, top: ctxMenu.y }}>
+            <div className="ctx-menu-title">{ctxMenu.s.name}</div>
+            {ctxMenu.s.kind !== 'dev' && (
+              <button
+                onClick={() => {
+                  onRestart(ctxMenu.s.id)
+                  setCtxMenu(null)
+                }}
+                title="Relaunch claude in place, resuming the conversation (e.g. to pick up a new model)"
+              >
+                ↻ Restart session
+              </button>
+            )}
+            <button
+              onClick={() => {
+                startEdit(ctxMenu.s)
+                setCtxMenu(null)
+              }}
+            >
+              ✎ Rename
+            </button>
+            {ctxMenu.s.kind !== 'dev' && (
+              <button
+                onClick={() => {
+                  onArchive(ctxMenu.s.id)
+                  setCtxMenu(null)
+                }}
+              >
+                📦 Archive
+              </button>
+            )}
+            <button
+              className="danger"
+              onClick={() => {
+                onClose(ctxMenu.s.id)
+                setCtxMenu(null)
+              }}
+            >
+              × Close session
+            </button>
+          </div>
+        </>
+      )}
     </aside>
   )
 }

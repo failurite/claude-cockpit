@@ -132,6 +132,13 @@ This is a heuristic and a good place to contribute a more exact implementation
   the record and `create()`s a fresh pane from it (`--resume` + reopened tabs);
   `deleteArchived` forgets it. The renderer sees `ArchivedSessionInfo[]` via
   `listArchivedInfo()` and shows a per-workspace "Archived" list.
+- **Restart in place:** `restart(id)` (right-click a session → *Restart session*)
+  kills the pty and relaunches `claude` under the **same pane id + position**,
+  resuming the conversation with `--resume` (if the transcript still exists) so
+  state is retained — handy to pick up a newly-available model. It reuses the
+  shared `buildLaunch`/`spawnPty`/`wireProc` helpers, re-binds the sub-agent
+  transcript watch, and emits `'reset'` → `pty:reset` so the renderer clears the
+  stale xterm before the resumed TUI repaints. The dev (tmux) session is exempt.
 - **Cockpit workspace:** the app's own repo is a built-in workspace
   (`COCKPIT_WORKSPACE_ID`), *synthesized* by `listAllWorkspaces()` rather than
   stored — present by default, not editable/deletable, hidden via the

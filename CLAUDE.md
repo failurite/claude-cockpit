@@ -41,7 +41,10 @@ Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design. Key files
   (POSIX single-quote vs Windows double-quote, no backslash-doubling), `NPM_BIN`,
   `IS_MAC`/`IS_WINDOWS`. Touch this — not ad-hoc `process.platform` checks — when
   adding OS-specific behavior.
-- `src/main/transcripts.ts` — sub-agent counting from `~/.claude/projects/*.jsonl`.
+- `src/main/transcripts.ts` — sub-agent counting + per-session token totals from
+  `~/.claude/projects/*.jsonl`.
+- `src/main/monitor.ts` — `SystemMonitor`: samples system CPU/memory + Claude token
+  throughput and pushes `SystemStats` to the renderer for the sidebar meters.
 - `src/main/store.ts` — JSON persistence (names, panes + browser tabs, workspaces, flags).
 - `src/preload/index.ts` — the `window.cockpit` bridge.
 - `src/renderer/src/` — React UI (`App.tsx`, `components/Sidebar.tsx`,

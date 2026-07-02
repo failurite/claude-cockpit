@@ -5,6 +5,7 @@ import { existsSync } from 'fs'
 import { spawn } from 'child_process'
 import { writeFileSync } from 'fs'
 import { SessionManager, expandTilde } from './sessions.js'
+import { SystemMonitor } from './monitor.js'
 import { startIngestServer, type IngestServer } from './ingest.js'
 import { BrowserManager } from './browser.js'
 import { startBrowserRpc, type BrowserRpcServer } from './browser-rpc.js'
@@ -52,6 +53,7 @@ let ingest: IngestServer
 let browserMgr: BrowserManager
 let browserRpc: BrowserRpcServer
 let sessionsRpc: SessionsRpcServer
+let monitor: SystemMonitor | null = null
 /** Set true only on the launch where we auto-installed hooks (for the one-time notice). */
 let hooksJustInstalled = false
 
@@ -232,6 +234,16 @@ async function bootstrap(): Promise<void> {
     }
   })
   manager.on('closed', (paneId: string) => browserMgr.disposePane(paneId))
+
+  // Sidebar meters: sample system CPU/memory + Claude token throughput and push
+  // to the renderer on an interval.
+  monitor = new SystemMonitor(() => manager.totalTokens())
+  monitor.on('stats', (stats) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('system:stats', stats)
+    }
+  })
+  monitor.start()
   browserMgr.on('tabs', (paneId: string, tabs: unknown) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('browser:tabs', paneId, tabs)
@@ -689,6 +701,7 @@ app.whenReady().then(async () => {
 })
 
 app.on('window-all-closed', () => {
+  monitor?.stop()
   manager?.disposeAll()
   ingest?.close()
   browserRpc?.close()
@@ -700,6 +713,7 @@ app.on('before-quit', () => {
   // Only kill tmux sessions on a real quit if the user opted in. Dev restarts
   // (which SIGTERM the process) generally skip before-quit, so survival is preserved.
   if (getFlag('killTmuxOnQuit')) killAllCockpitSessions()
+  monitor?.stop()
   manager?.disposeAll()
   ingest?.close()
   browserRpc?.close()

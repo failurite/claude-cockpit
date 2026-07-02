@@ -25,19 +25,30 @@ export function transcriptExists(sessionId: string): boolean {
   return locate(sessionId) !== null
 }
 
+/** Live stats derived from one scan of a session's transcript. */
+export interface TranscriptStats {
+  /** Active sub-agents: `Task` tool calls without a matching tool_result yet. */
+  subagents: number
+  /** Cumulative tokens (input + output + cache-creation) across assistant turns. */
+  tokens: number
+}
+
 /**
- * Count *active* sub-agents by scanning the transcript for `Task` tool calls
- * that don't yet have a matching tool_result. This is a heuristic (v1) but maps
- * directly to the sidechains Claude spawns.
+ * Scan a transcript once for both the active sub-agent count and cumulative
+ * token usage. Sub-agents are a heuristic (open `Task` tool_use ids). Tokens sum
+ * each assistant turn's `usage` — input + output + cache-creation, deliberately
+ * excluding `cache_read_input_tokens` (cheap, and it re-reads the whole context
+ * every turn, which would swamp the meter).
  */
-function countActiveSubagents(file: string): number {
+function readTranscriptStats(file: string): TranscriptStats {
   let text: string
   try {
     text = readFileSync(file, 'utf8')
   } catch {
-    return 0
+    return { subagents: 0, tokens: 0 }
   }
   const open = new Set<string>()
+  let tokens = 0
   for (const line of text.split('\n')) {
     if (!line.trim()) continue
     let entry: any
@@ -46,17 +57,26 @@ function countActiveSubagents(file: string): number {
     } catch {
       continue
     }
-    const content = entry?.message?.content
-    if (!Array.isArray(content)) continue
-    for (const block of content) {
-      if (block?.type === 'tool_use' && block?.name === 'Task') {
-        open.add(block.id)
-      } else if (block?.type === 'tool_result' && block?.tool_use_id) {
-        open.delete(block.tool_use_id)
+    const message = entry?.message
+    const content = message?.content
+    if (Array.isArray(content)) {
+      for (const block of content) {
+        if (block?.type === 'tool_use' && block?.name === 'Task') {
+          open.add(block.id)
+        } else if (block?.type === 'tool_result' && block?.tool_use_id) {
+          open.delete(block.tool_use_id)
+        }
       }
     }
+    const u = message?.usage
+    if (u && message?.role === 'assistant') {
+      tokens +=
+        (u.input_tokens || 0) +
+        (u.output_tokens || 0) +
+        (u.cache_creation_input_tokens || 0)
+    }
   }
-  return open.size
+  return { subagents: open.size, tokens }
 }
 
 /** A compact, coordination-oriented summary of another session's transcript. */
@@ -168,22 +188,24 @@ export function sessionDigest(
 }
 
 /**
- * Watch a Claude session's transcript and report the active sub-agent count.
- * The file may not exist yet at bind time, so we also watch the projects dir
- * for its creation. Returns a dispose function.
+ * Watch a Claude session's transcript and report its live stats (active
+ * sub-agent count + cumulative tokens). The file may not exist yet at bind time,
+ * so we also watch the projects dir for its creation. Returns a dispose function.
  */
 export function watchTranscriptForSession(
   sessionId: string,
-  onCount: (count: number) => void
+  onStats: (stats: TranscriptStats) => void
 ): () => void {
   let fileWatcher: FSWatcher | null = null
-  let last = -1
+  let lastSubagents = -1
+  let lastTokens = -1
 
   const report = (file: string): void => {
-    const n = countActiveSubagents(file)
-    if (n !== last) {
-      last = n
-      onCount(n)
+    const s = readTranscriptStats(file)
+    if (s.subagents !== lastSubagents || s.tokens !== lastTokens) {
+      lastSubagents = s.subagents
+      lastTokens = s.tokens
+      onStats(s)
     }
   }
 

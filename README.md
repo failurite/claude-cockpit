@@ -30,6 +30,11 @@ work, and which is done. `claude-cockpit` gives you:
 - **Names you control** — double-click a session to rename it; names persist.
 - **Sub-agent counts** — see how many sub-agents (Task tool / sidechains) a
   session currently has running.
+- **Live load meters** — the sidebar header shows system CPU + memory and a
+  **token-throughput meter** (how hard Claude is working right now across your
+  live sessions, computed from their transcripts — a live rate, not a quota,
+  since there's no public API for subscription limits). The ↗ opens your real
+  usage page; each active session's cumulative token count shows in the footer.
 - **Embedded browser per session** — when a session has the browser enabled,
   Claude opens and drives tabs *inside Cockpit* (not an external Chrome window),
   with a tab strip, URL bar, persistent login profile, and tabs that survive

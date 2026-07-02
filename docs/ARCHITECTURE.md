@@ -139,6 +139,15 @@ This is a heuristic and a good place to contribute a more exact implementation
   shared `buildLaunch`/`spawnPty`/`wireProc` helpers, re-binds the sub-agent
   transcript watch, and emits `'reset'` → `pty:reset` so the renderer clears the
   stale xterm before the resumed TUI repaints. The dev (tmux) session is exempt.
+- **Sidebar meters:** `SystemMonitor` (`monitor.ts`) samples on an interval and
+  emits `SystemStats` → `system:stats` → the sidebar's `SystemStats` component.
+  CPU is the delta of idle/total jiffies from `os.cpus()`; memory is
+  `os.totalmem/freemem`; the **token meter** is the smoothed delta of
+  `SessionManager.totalTokens()` (per-session `tokensTotal`, summed from each
+  transcript's per-turn `usage` — input + output + cache-creation, *excluding*
+  cache-read). There is no public API for Claude subscription quota, so the token
+  reading is a live *throughput* meter, not a percent-of-limit; the ↗ link opens
+  the real usage page.
 - **Cockpit workspace:** the app's own repo is a built-in workspace
   (`COCKPIT_WORKSPACE_ID`), *synthesized* by `listAllWorkspaces()` rather than
   stored — present by default, not editable/deletable, hidden via the

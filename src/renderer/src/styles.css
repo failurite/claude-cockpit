@@ -80,6 +80,73 @@ body {
 }
 
 /* ---------- Workspace groups ---------- */
+/* Live system + token meters under the sidebar header. */
+.sys-stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px 7px;
+  border-bottom: 1px solid var(--border);
+}
+.meter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+.meter-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  flex: none;
+}
+.meter-track {
+  flex: 1;
+  min-width: 14px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  overflow: hidden;
+}
+.meter-fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+.meter-fill.cpu {
+  background: #4aa3ff;
+}
+.meter-fill.mem {
+  background: #b57bff;
+}
+.meter-fill.tok {
+  background: #48c78e;
+}
+.meter-value {
+  font-size: 9px;
+  color: var(--muted);
+  flex: none;
+  width: 34px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.sys-usage-link {
+  flex: none;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+}
+.sys-usage-link:hover {
+  color: var(--accent);
+}
+
 .ws-scroll {
   flex: 1;
   overflow-y: auto;

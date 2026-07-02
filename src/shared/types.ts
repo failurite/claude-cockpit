@@ -76,6 +76,12 @@ export interface TerminalSession {
   status: SessionStatus
   /** Count of currently-active sub-agents (Task tool / sidechains). */
   subagentCount: number
+  /**
+   * Cumulative tokens for this session's current conversation (input + output +
+   * cache-creation, from the transcript's per-turn `usage`). Drives the live
+   * token meter; cache-read tokens are excluded (cheap and dominate every turn).
+   */
+  tokensTotal: number
   /** True while this session is actively driving Chrome (claude-in-chrome MCP tools). */
   usingChrome: boolean
   /** Most recent browser action target (e.g. host or tool), shown when usingChrome. */
@@ -85,6 +91,28 @@ export interface TerminalSession {
   /** ms epoch of last update (stamped in main). */
   updatedAt: number
 }
+
+/**
+ * A point-in-time snapshot of machine + Claude token load, sampled in main and
+ * pushed to the renderer for the sidebar meters. CPU/memory are system-wide;
+ * token figures are aggregated across this app's live sessions.
+ */
+export interface SystemStats {
+  /** System-wide CPU utilisation, 0–100. */
+  cpu: number
+  /** System memory in use, 0–100. */
+  memPercent: number
+  /** System memory used / total, bytes. */
+  memUsed: number
+  memTotal: number
+  /** Recent token throughput across live sessions, tokens/sec (smoothed). */
+  tokenRate: number
+  /** Cumulative tokens across all live sessions' current conversations. */
+  tokensTotal: number
+}
+
+/** The account's usage/limits page — the authoritative quota lives here, not in any API. */
+export const CLAUDE_USAGE_URL = 'https://claude.ai/settings/usage'
 
 /**
  * A session that was *archived* — closed (pty killed, pane removed) but saved so
@@ -277,6 +305,8 @@ export interface CockpitApi {
   attach(id: string): Promise<string>
   /** Subscribe to session-list changes (status, names, subagents, add/remove). */
   onSessionsChanged(cb: (sessions: TerminalSession[]) => void): () => void
+  /** Subscribe to periodic system + token-load stats (for the sidebar meters). */
+  onSystemStats(cb: (stats: SystemStats) => void): () => void
   /** Main asks the renderer to re-focus the active terminal (e.g. after agent-driven
    *  browser activity grabbed OS focus). Returns an unsubscribe fn. */
   onRefocusTerminal(cb: () => void): () => void

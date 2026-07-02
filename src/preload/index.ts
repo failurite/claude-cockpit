@@ -1,10 +1,17 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { BrowserTab, CockpitApi, TerminalSession, UpdateStatus } from '../shared/types.js'
+import type {
+  BrowserTab,
+  CockpitApi,
+  SystemStats,
+  TerminalSession,
+  UpdateStatus
+} from '../shared/types.js'
 
 // Fan-out of broadcast IPC events to per-pane / global subscribers in the renderer.
 const dataSubs = new Map<string, Set<(data: string) => void>>()
 const resetSubs = new Map<string, Set<() => void>>()
 const sessionSubs = new Set<(s: TerminalSession[]) => void>()
+const statsSubs = new Set<(s: SystemStats) => void>()
 const updateSubs = new Set<(s: UpdateStatus) => void>()
 const browserTabSubs = new Set<(paneId: string, tabs: BrowserTab[]) => void>()
 const refocusSubs = new Set<() => void>()
@@ -17,6 +24,9 @@ ipcRenderer.on('pty:reset', (_e, paneId: string) => {
 })
 ipcRenderer.on('sessions:changed', (_e, sessions: TerminalSession[]) => {
   sessionSubs.forEach((cb) => cb(sessions))
+})
+ipcRenderer.on('system:stats', (_e, stats: SystemStats) => {
+  statsSubs.forEach((cb) => cb(stats))
 })
 ipcRenderer.on('updates:status', (_e, s: UpdateStatus) => {
   updateSubs.forEach((cb) => cb(s))
@@ -58,6 +68,10 @@ const api: CockpitApi = {
   onSessionsChanged: (cb) => {
     sessionSubs.add(cb)
     return () => sessionSubs.delete(cb)
+  },
+  onSystemStats: (cb) => {
+    statsSubs.add(cb)
+    return () => statsSubs.delete(cb)
   },
   onRefocusTerminal: (cb) => {
     refocusSubs.add(cb)

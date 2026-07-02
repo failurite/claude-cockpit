@@ -290,6 +290,7 @@ export class SessionManager extends EventEmitter {
       claudeSessionId: null,
       status: 'starting',
       subagentCount: 0,
+      tokensTotal: 0,
       usingChrome: false,
       chromeActivity: null,
       lastActivity: 'launching',
@@ -421,11 +422,11 @@ export class SessionManager extends EventEmitter {
     p.proc = this.spawnPty(id, cwd, launch)
     this.wireProc(p, id)
 
-    // Re-attach the sub-agent transcript watch for a resumed conversation (its
+    // Re-attach the transcript watch for a resumed conversation (its
     // claudeSessionId is unchanged, so bindClaudeSession would no-op).
     if (resumeId) {
-      p.unwatch = watchTranscriptForSession(resumeId, (count) =>
-        this.patch(id, { subagentCount: count })
+      p.unwatch = watchTranscriptForSession(resumeId, (stats) =>
+        this.patch(id, { subagentCount: stats.subagents, tokensTotal: stats.tokens })
       )
     }
 
@@ -433,6 +434,7 @@ export class SessionManager extends EventEmitter {
       options,
       status: 'starting' as SessionStatus,
       subagentCount: 0,
+      tokensTotal: 0,
       usingChrome: false,
       chromeActivity: null,
       lastActivity: 'restarting',
@@ -599,11 +601,18 @@ export class SessionManager extends EventEmitter {
     p.session.claudeSessionId = claudeSessionId
     this.claudeIndex.set(claudeSessionId, paneId)
     p.unwatch?.()
-    p.unwatch = watchTranscriptForSession(claudeSessionId, (count) =>
-      this.patch(paneId, { subagentCount: count })
+    p.unwatch = watchTranscriptForSession(claudeSessionId, (stats) =>
+      this.patch(paneId, { subagentCount: stats.subagents, tokensTotal: stats.tokens })
     )
     this.patch(paneId, {})
     this.persist()
+  }
+
+  /** Cumulative tokens across all live sessions' conversations (for the load meter). */
+  totalTokens(): number {
+    let sum = 0
+    for (const p of this.panes.values()) sum += p.session.tokensTotal || 0
+    return sum
   }
 
   setStatus(paneId: string, status: SessionStatus, activity: string): void {

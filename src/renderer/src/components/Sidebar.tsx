@@ -6,6 +6,7 @@ import type {
   Workspace
 } from '../../../shared/types'
 import { COCKPIT_WORKSPACE_ID } from '../../../shared/types'
+import { SystemStats } from './SystemStats'
 import { WorkspaceGit } from './WorkspaceGit'
 import { WorkspaceIssues } from './WorkspaceIssues'
 import { WorkspaceArchived } from './WorkspaceArchived'
@@ -233,6 +234,8 @@ export function Sidebar({
           </button>
         </div>
       </div>
+
+      <SystemStats />
 
       <div className="ws-scroll">
         {workspaces.map((ws) => {

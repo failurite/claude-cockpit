@@ -366,6 +366,11 @@ export default function App(): JSX.Element {
             {active.subagentCount > 0 && (
               <span className="subagents">⛓ {active.subagentCount} sub-agents</span>
             )}
+            {active.tokensTotal > 0 && (
+              <span className="muted" title="Tokens used this conversation (input + output + cache-creation)">
+                ◇ {active.tokensTotal >= 1000 ? `${(active.tokensTotal / 1000).toFixed(1)}k` : active.tokensTotal} tok
+              </span>
+            )}
             <span className="spacer" />
             <span className="muted mono">{active.cwd}</span>
           </footer>

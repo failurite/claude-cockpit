@@ -87,13 +87,18 @@ using `claude --resume <id>` to bring back conversations.
 
 `npm run update-app` (→ `scripts/update-app.mjs`, which dispatches to
 `install-local.sh` on macOS / `install-local.ps1` on Windows) is the local update
-mechanism for the packaged Desktop app: it rebuilds, swaps the installed app in
-place, and a detached watcher relaunches it after the old instance quits. No
-notarization/signing prompts — a locally-built app isn't quarantined. You can run
-this from the **Cockpit Dev** session: the dev session's cwd is the real repo even
-in the packaged app, because the repo path is baked in at build time via
-`__REPO_ROOT__` (`electron.vite.config.ts` `define` → `REPO_ROOT` in
-`src/main/index.ts`).
+mechanism for the packaged Desktop app: it rebuilds and swaps the installed app in
+place. On macOS it then **POSTs `/update-staged` to the running app's ingest
+server (:47615)** rather than force-quitting — the app shows a "restart now / later"
+prompt and keeps a **⟳ Restart to update** button in the sidebar until you choose;
+restarting spawns a detached watcher that reopens the fresh build after quit
+(`applyStagedUpdate` in `src/main/index.ts`). If the app isn't reachable (not
+running, or an older build without the endpoint) the script falls back to the old
+detached-watcher + `osascript quit` auto-relaunch. No notarization/signing prompts
+— a locally-built app isn't quarantined. You can run this from the **Cockpit Dev**
+session: the dev session's cwd is the real repo even in the packaged app, because
+the repo path is baked in at build time via `__REPO_ROOT__`
+(`electron.vite.config.ts` `define` → `REPO_ROOT` in `src/main/index.ts`).
 
 Note: `update-app` only builds the platform it runs on. To ship a feature to BOTH
 platform releases, push a version tag (`v*`) — `.github/workflows/release.yml`

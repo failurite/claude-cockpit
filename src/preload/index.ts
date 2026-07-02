@@ -13,6 +13,7 @@ const resetSubs = new Map<string, Set<() => void>>()
 const sessionSubs = new Set<(s: TerminalSession[]) => void>()
 const statsSubs = new Set<(s: SystemStats) => void>()
 const updateSubs = new Set<(s: UpdateStatus) => void>()
+const stagedSubs = new Set<() => void>()
 const browserTabSubs = new Set<(paneId: string, tabs: BrowserTab[]) => void>()
 const refocusSubs = new Set<() => void>()
 
@@ -30,6 +31,9 @@ ipcRenderer.on('system:stats', (_e, stats: SystemStats) => {
 })
 ipcRenderer.on('updates:status', (_e, s: UpdateStatus) => {
   updateSubs.forEach((cb) => cb(s))
+})
+ipcRenderer.on('update:staged', () => {
+  stagedSubs.forEach((cb) => cb())
 })
 ipcRenderer.on('browser:tabs', (_e, paneId: string, tabs: BrowserTab[]) => {
   browserTabSubs.forEach((cb) => cb(paneId, tabs))
@@ -134,6 +138,12 @@ const api: CockpitApi = {
     onStatus: (cb) => {
       updateSubs.add(cb)
       return () => updateSubs.delete(cb)
+    },
+    stagedPending: () => ipcRenderer.invoke('update:staged-pending'),
+    applyStaged: () => ipcRenderer.send('update:apply-staged'),
+    onStaged: (cb) => {
+      stagedSubs.add(cb)
+      return () => stagedSubs.delete(cb)
     }
   }
 }

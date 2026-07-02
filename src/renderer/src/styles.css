@@ -78,6 +78,28 @@ body {
   gap: 6px;
   -webkit-app-region: no-drag;
 }
+/* "Restart to update" — shown only while a locally-built update is staged. */
+.update-pill {
+  -webkit-app-region: no-drag;
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.update-pill:hover {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.update-pill.rail {
+  padding: 0;
+  width: 28px;
+  height: 28px;
+  font-size: 14px;
+}
 
 /* ---------- Workspace groups ---------- */
 /* Live system + token meters under the sidebar header. */

@@ -37,9 +37,21 @@ echo "▶ Installing to: $DEST"
 rm -rf "$DEST"
 cp -R "$BUILT" "$DEST"
 
-# Detached watcher: wait for the currently-running app (if any) to quit, then
-# reopen the freshly-installed one. `nohup … &` survives this script's terminal
-# being torn down when the app quits (which is what closes a session's pty).
+# Prefer a graceful hand-off: tell the running app a fresh build is staged so it
+# can prompt "restart now or later" and keep a restart button until you choose —
+# instead of yanking the app out from under you. The app owns the relaunch in
+# that case (it spawns its own reopen-after-quit watcher). 47615 is the fixed
+# ingest port (INGEST_PORT in src/main/index.ts).
+if curl -fsS -m 2 -X POST "http://127.0.0.1:47615/update-staged" \
+     -H 'content-type: application/json' \
+     --data-raw "{\"appPath\":\"$DEST\"}" >/dev/null 2>&1; then
+  echo "✅ Update installed. Cockpit will prompt you to restart when you're ready."
+  exit 0
+fi
+
+# Fallback (app not running, or an older build without the endpoint): detached
+# watcher waits for the app to quit, then reopens the fresh one. `nohup … &`
+# survives this script's terminal being torn down when the app quits.
 echo "▶ Scheduling relaunch…"
 nohup bash -c '
   while pgrep -f "Claude Cockpit.app/Contents/MacOS/" >/dev/null 2>&1; do sleep 1; done
@@ -49,7 +61,4 @@ nohup bash -c '
 disown 2>/dev/null || true
 
 echo "✅ Update installed. Relaunching Cockpit…"
-# Ask the running app to quit so the watcher relaunches the new build. If this
-# script runs inside Cockpit, this also ends the script — that's fine, the
-# detached watcher above already owns the relaunch, and sessions are restored.
 osascript -e 'quit app "Claude Cockpit"' >/dev/null 2>&1 || true

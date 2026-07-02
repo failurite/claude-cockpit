@@ -49,6 +49,10 @@ interface Props {
   /** Incremented after a Done merge so each open Issues list re-fetches. */
   issuesRefreshKey: number
   onOpenSettings: () => void
+  /** A locally-built update is staged; show the restart button. */
+  updateStaged: boolean
+  /** Restart into the staged update. */
+  onApplyUpdate: () => void
   /** Current width in px (user-resizable via the drag handle in App). */
   width: number
   /** Collapse the sidebar to a thin rail. */
@@ -76,6 +80,8 @@ export function Sidebar({
   onStartIssue,
   issuesRefreshKey,
   onOpenSettings,
+  updateStaged,
+  onApplyUpdate,
   width,
   onCollapse
 }: Props): JSX.Element {
@@ -223,6 +229,15 @@ export function Sidebar({
       <div className="sidebar-head">
         <span className="brand">claude-cockpit</span>
         <div className="head-actions">
+          {updateStaged && (
+            <button
+              className="update-pill"
+              title="An update is ready — restart to apply it"
+              onClick={onApplyUpdate}
+            >
+              ⟳ Restart to update
+            </button>
+          )}
           <button className="new-btn" title="Hide sidebar" onClick={onCollapse}>
             «
           </button>

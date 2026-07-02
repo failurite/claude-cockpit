@@ -391,6 +391,17 @@ export interface CockpitApi {
     install(): Promise<void>
     /** Subscribe to status changes. Returns an unsubscribe fn. */
     onStatus(cb: (s: UpdateStatus) => void): () => void
+    /**
+     * True if a locally-built update (`npm run update-app`) has been swapped in
+     * on disk and is waiting for a restart to take effect. Lets the renderer
+     * re-show the "Restart to update" button if the staged event fired before it
+     * mounted.
+     */
+    stagedPending(): Promise<boolean>
+    /** Relaunch into the staged local build (quits and reopens the new app). */
+    applyStaged(): void
+    /** Fires when a locally-built update has just been staged and is ready to apply. */
+    onStaged(cb: () => void): () => void
   }
 }
 

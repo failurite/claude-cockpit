@@ -34,6 +34,10 @@ export default function App(): JSX.Element {
   // Bumped when main asks us to re-focus the terminal (agent browser activity
   // stole OS focus); the active TerminalView re-focuses when it changes.
   const [refocusTick, setRefocusTick] = useState(0)
+  // A locally-built update (`npm run update-app`) is staged on disk. `staged`
+  // drives the persistent restart button; `prompt` is the one-time now/later ask.
+  const [updateStaged, setUpdateStaged] = useState(false)
+  const [updatePrompt, setUpdatePrompt] = useState(false)
 
   // Sidebar width + collapsed state, persisted across launches.
   const [sbWidth, setSbWidth] = useState(() => {
@@ -102,12 +106,24 @@ export default function App(): JSX.Element {
     }
   }, [sessions, activeId])
 
+  // A staged local update: prompt now/later when it lands, and keep a restart
+  // button afterward. Also re-check on mount in case the event fired first.
+  useEffect(() => {
+    const off = window.cockpit.updates.onStaged(() => {
+      setUpdateStaged(true)
+      setUpdatePrompt(true)
+    })
+    window.cockpit.updates.stagedPending().then((p) => p && setUpdateStaged(true))
+    return off
+  }, [])
+  const applyUpdate = useCallback(() => window.cockpit.updates.applyStaged(), [])
+
   // An app-level modal (workspace/session dialog or Settings) must sit above
   // everything — but the embedded browser is a native overlay that always paints
   // over renderer HTML. Force it hidden while any modal is open.
   useEffect(() => {
-    window.cockpit.browser.setOverlaySuppressed(!!dialog || settingsOpen)
-  }, [dialog, settingsOpen])
+    window.cockpit.browser.setOverlaySuppressed(!!dialog || settingsOpen || updatePrompt)
+  }, [dialog, settingsOpen, updatePrompt])
 
   // Auto-reveal a pane's browser the moment the agent opens its first tab.
   useEffect(() => {
@@ -270,6 +286,15 @@ export default function App(): JSX.Element {
           <button className="new-btn" title="Show sidebar" onClick={() => setSbCollapsed(false)}>
             »
           </button>
+          {updateStaged && (
+            <button
+              className="update-pill rail"
+              title="An update is ready — restart to apply it"
+              onClick={applyUpdate}
+            >
+              ⟳
+            </button>
+          )}
         </div>
       ) : (
         <>
@@ -294,6 +319,8 @@ export default function App(): JSX.Element {
             onStartIssue={startIssue}
             issuesRefreshKey={issuesRefreshKey}
             onOpenSettings={() => setSettingsOpen(true)}
+            updateStaged={updateStaged}
+            onApplyUpdate={applyUpdate}
             width={sbWidth}
             onCollapse={() => setSbCollapsed(true)}
           />
@@ -397,6 +424,26 @@ export default function App(): JSX.Element {
           onRefreshWorkspaces={() => window.cockpit.workspaces.list().then(setWorkspaces)}
           onClose={() => setSettingsOpen(false)}
         />
+      )}
+      {updatePrompt && (
+        <div className="modal-backdrop" onClick={() => setUpdatePrompt(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2 className="modal-title">Update ready</h2>
+            <p className="muted" style={{ marginTop: 0 }}>
+              A new build of Cockpit has been installed. Restart now to use it, or keep
+              working — the <strong>⟳ Restart to update</strong> button stays in the sidebar
+              until you do. Your sessions are restored on relaunch.
+            </p>
+            <div className="modal-actions">
+              <button className="btn" onClick={() => setUpdatePrompt(false)}>
+                Later
+              </button>
+              <button className="btn primary" onClick={applyUpdate}>
+                Restart now
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

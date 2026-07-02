@@ -18,7 +18,9 @@ export interface IngestServer {
  */
 export function startIngestServer(
   onEvent: (e: HookEvent) => void,
-  preferredPort = 0
+  preferredPort = 0,
+  /** POST /update-staged — the `update-app` script tells us a new build is on disk. */
+  onUpdateStaged?: (info: { appPath?: string }) => void
 ): Promise<IngestServer> {
   return new Promise((resolve, reject) => {
     const server: Server = createServer((req, res) => {
@@ -26,6 +28,7 @@ export function startIngestServer(
         res.writeHead(405).end()
         return
       }
+      const isUpdate = req.url === '/update-staged'
       let body = ''
       req.on('data', (c) => {
         body += c
@@ -33,9 +36,12 @@ export function startIngestServer(
       })
       req.on('end', () => {
         try {
-          onEvent(JSON.parse(body) as HookEvent)
+          const parsed = body ? JSON.parse(body) : {}
+          if (isUpdate) onUpdateStaged?.(parsed)
+          else onEvent(parsed as HookEvent)
         } catch {
           /* ignore malformed */
+          if (isUpdate) onUpdateStaged?.({})
         }
         res.writeHead(204).end()
       })

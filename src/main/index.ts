@@ -54,6 +54,8 @@ let browserMgr: BrowserManager
 let browserRpc: BrowserRpcServer
 let sessionsRpc: SessionsRpcServer
 let monitor: SystemMonitor | null = null
+/** Path to a locally-built app swapped in by `update-app`, awaiting a restart to apply. */
+let stagedUpdatePath: string | null = null
 /** Set true only on the launch where we auto-installed hooks (for the one-time notice). */
 let hooksJustInstalled = false
 
@@ -196,7 +198,13 @@ async function bootstrap(): Promise<void> {
     }
   }
 
-  ingest = await startIngestServer(handleHookEvent, INGEST_PORT)
+  ingest = await startIngestServer(handleHookEvent, INGEST_PORT, (info) => {
+    // `npm run update-app` swapped a fresh build in on disk and pinged us instead
+    // of force-quitting. Remember where it is and let the user choose when to
+    // restart into it (prompt + persistent button in the renderer).
+    stagedUpdatePath = info.appPath || null
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('update:staged')
+  })
 
   // Embedded per-session browser: RPC endpoint the MCP shim calls, the manager
   // that owns the WebContentsViews, and the shared --mcp-config we hand sessions.
@@ -290,6 +298,8 @@ async function bootstrap(): Promise<void> {
     if (/^https:\/\//.test(url)) void shell.openExternal(url)
   })
   ipcMain.handle('app:relaunch', (_e, opts) => relaunchApp(opts))
+  ipcMain.handle('update:staged-pending', () => stagedUpdatePath !== null)
+  ipcMain.on('update:apply-staged', () => applyStagedUpdate())
   ipcMain.handle('tmux:available', () => isTmuxAvailable())
   ipcMain.handle('tmux:list', () => listCockpitSessions())
   ipcMain.handle('tmux:kill', (_e, name: string) => {
@@ -634,6 +644,31 @@ async function relaunchApp(opts?: {
       'In dev (npm run dev) the app hot-reloads on code changes automatically. ' +
       'Self-relaunch is available in the packaged build.'
   }
+}
+
+/**
+ * Relaunch into a staged local build (`update-app` already swapped the .app on
+ * disk). On macOS we spawn a tiny detached watcher that waits for this process to
+ * exit, then reopens the new bundle — mirroring what install-local.sh used to do
+ * itself, but triggered when the user chooses to restart rather than immediately.
+ * Falls back to Electron's own relaunch elsewhere / when the path is unknown.
+ */
+function applyStagedUpdate(): void {
+  const dest = stagedUpdatePath
+  if (IS_MAC && dest) {
+    spawn(
+      'bash',
+      [
+        '-c',
+        `while pgrep -f "Claude Cockpit.app/Contents/MacOS/" >/dev/null 2>&1; do sleep 1; done; sleep 1; open ${JSON.stringify(dest)}`
+      ],
+      { detached: true, stdio: 'ignore' }
+    ).unref()
+    app.quit()
+    return
+  }
+  app.relaunch()
+  app.exit(0)
 }
 
 function createWindow(): void {

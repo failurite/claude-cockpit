@@ -2,6 +2,8 @@ import { app, BrowserWindow, ipcMain, dialog, nativeImage, shell } from 'electro
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { existsSync } from 'fs'
+import { homedir } from 'os'
+import { randomUUID } from 'crypto'
 import { spawn } from 'child_process'
 import { writeFileSync } from 'fs'
 import { SessionManager, expandTilde } from './sessions.js'
@@ -10,7 +12,7 @@ import { startIngestServer, type IngestServer } from './ingest.js'
 import { BrowserManager } from './browser.js'
 import { startBrowserRpc, type BrowserRpcServer } from './browser-rpc.js'
 import { startSessionsRpc, type SessionsRpcServer } from './sessions-rpc.js'
-import { gitStatus, gitPush, gitPull } from './git.js'
+import { gitStatus, gitPush, gitPull, gitClone } from './git.js'
 import { ghAvailable, listIssues, viewIssue, closeIssue } from './issues.js'
 import { createIssueWorktree, finishIssueWorktree } from './worktrees.js'
 import type { IssueDoneResult, IssueRef } from '../shared/types.js'
@@ -24,7 +26,7 @@ import {
   killAllCockpitSessions
 } from './tmux.js'
 import { IS_MAC, NPM_BIN } from './platform.js'
-import type { HookEvent, Workspace, AppSettings } from '../shared/types.js'
+import type { HookEvent, Workspace, AppSettings, SessionOptions } from '../shared/types.js'
 import { COCKPIT_WORKSPACE_ID } from '../shared/types.js'
 
 /** Fixed ingest port so a persistent tmux dev session can reach us after restarts. */
@@ -353,6 +355,7 @@ async function bootstrap(): Promise<void> {
   ipcMain.handle('dialog:pick-folder', () => pickFolder())
   ipcMain.handle('workspaces:list', () => listAllWorkspaces())
   ipcMain.handle('workspaces:save', (_e, ws: Workspace) => upsertWorkspace(ws))
+  ipcMain.handle('workspaces:clone', (_e, opts) => cloneWorkspace(opts))
   ipcMain.handle('workspaces:remove', (_e, id: string) => removeWorkspace(id))
 
   // Auto-update wiring (no-op outside a packaged build).
@@ -600,6 +603,49 @@ function upsertWorkspace(ws: Workspace): Workspace[] {
   else list[i] = ws
   saveWorkspaces(list)
   return listAllWorkspaces()
+}
+
+/** `owner/repo` shorthand → a GitHub https URL; otherwise pass the URL through. */
+function normalizeRepoUrl(raw: string): string {
+  const s = raw.trim()
+  if (/^[\w.-]+\/[\w.-]+$/.test(s)) return `https://github.com/${s}.git`
+  return s
+}
+
+/** The repo/directory name a clone URL would produce (e.g. `.../foo.git` → `foo`). */
+function repoNameFromUrl(url: string): string {
+  const m = url.replace(/\/+$/, '').match(/([^/]+?)(\.git)?$/)
+  return (m && m[1]) || 'repo'
+}
+
+/**
+ * Clone a GitHub repo and create a workspace pointed at it. `dir` is the clone
+ * destination (must not exist); when omitted we clone into `~/<repo-name>`. Any
+ * failure (bad URL, private repo, existing dir) returns `ok:false` with a short
+ * message so the dialog can stay open and show it.
+ */
+async function cloneWorkspace(opts: {
+  url: string
+  dir?: string
+  name?: string
+  defaults: SessionOptions
+}): Promise<{ ok: boolean; message?: string; workspaces: Workspace[]; workspace?: Workspace }> {
+  const url = normalizeRepoUrl(opts.url || '')
+  if (!url) return { ok: false, message: 'Enter a GitHub repo URL.', workspaces: listAllWorkspaces() }
+  const repoName = repoNameFromUrl(url)
+  const dir = expandTilde((opts.dir || join(homedir(), repoName)).trim())
+  if (existsSync(dir)) {
+    return { ok: false, message: `That folder already exists:\n${dir}`, workspaces: listAllWorkspaces() }
+  }
+  const res = await gitClone(url, dir)
+  if (!res.ok) return { ok: false, message: res.message, workspaces: listAllWorkspaces() }
+  const ws: Workspace = {
+    id: randomUUID(),
+    name: (opts.name || '').trim() || repoName,
+    path: dir,
+    defaults: opts.defaults
+  }
+  return { ok: true, workspaces: upsertWorkspace(ws), workspace: ws }
 }
 
 /** Remove a workspace by id; returns the remaining list. (Hide Cockpit via Settings instead.) */

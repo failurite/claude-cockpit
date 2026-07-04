@@ -90,6 +90,7 @@ const api: CockpitApi = {
   workspaces: {
     list: () => ipcRenderer.invoke('workspaces:list'),
     save: (ws) => ipcRenderer.invoke('workspaces:save', ws),
+    createFromRepo: (opts) => ipcRenderer.invoke('workspaces:clone', opts),
     remove: (id) => ipcRenderer.invoke('workspaces:remove', id)
   },
   appInfo: () => ipcRenderer.invoke('app:info'),

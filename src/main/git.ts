@@ -69,6 +69,24 @@ export async function gitStatus(dir: string, fetch = false): Promise<GitStatus> 
   }
 }
 
+/**
+ * `git clone <url> <dir>`. `dir` must not already exist (git refuses otherwise).
+ * Returns success or a short error line for the UI. Generous timeout for large
+ * repos; GIT_TERMINAL_PROMPT=0 so a private repo fails fast instead of hanging.
+ */
+export async function gitClone(url: string, dir: string): Promise<{ ok: boolean; message: string }> {
+  try {
+    await pexec('git', ['clone', url, dir], {
+      timeout: 300000,
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+      maxBuffer: 8_000_000
+    })
+    return { ok: true, message: 'Cloned.' }
+  } catch (e) {
+    return { ok: false, message: errMsg(e) }
+  }
+}
+
 /** `git push`. Returns the command output (success or failure) for the UI. */
 export async function gitPush(dir: string): Promise<{ ok: boolean; message: string }> {
   try {

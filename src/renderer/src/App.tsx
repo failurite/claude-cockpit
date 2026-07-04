@@ -214,10 +214,29 @@ export default function App(): JSX.Element {
   )
 
   // --- dialog submit handlers ---
+  // Resolves with an error string to keep the dialog open (e.g. a clone failed),
+  // or null on success (the dialog then closes).
   const submitDialog = useCallback(
-    async (v: LaunchValues) => {
-      if (!dialog) return
+    async (v: LaunchValues): Promise<string | null> => {
+      if (!dialog) return null
       if (dialog.kind === 'workspace-new') {
+        if (v.repoUrl) {
+          // Clone a GitHub repo and point the new workspace at the checkout.
+          const res = await window.cockpit.workspaces.createFromRepo({
+            url: v.repoUrl,
+            dir: v.path || undefined,
+            name: v.name || undefined,
+            defaults: v.options
+          })
+          if (!res.ok) return res.message ?? 'Clone failed.'
+          setWorkspaces(res.workspaces)
+          if (res.workspace) {
+            const s = await window.cockpit.createSession({ workspaceId: res.workspace.id })
+            setActiveId(s.id)
+          }
+          setDialog(null)
+          return null
+        }
         // Derive a name from the folder when none was typed; '~' (the default
         // root) reads as "Home" rather than a literal tilde.
         const base = v.path === '~' ? 'Home' : v.path.split('/').filter(Boolean).pop()
@@ -247,6 +266,7 @@ export default function App(): JSX.Element {
         setActiveId(s.id)
       }
       setDialog(null)
+      return null
     },
     [dialog]
   )

@@ -271,6 +271,17 @@ export interface CockpitApi {
     list(): Promise<Workspace[]>
     /** Create or update a workspace (upsert by id); returns the full list. */
     save(ws: Workspace): Promise<Workspace[]>
+    /**
+     * Clone a GitHub repo into `dir` (or `~/<repo-name>` if omitted) and create a
+     * workspace pointed at the clone. Returns the updated list + new workspace on
+     * success, or `ok:false` + a message (bad URL, private repo, folder exists).
+     */
+    createFromRepo(opts: {
+      url: string
+      dir?: string
+      name?: string
+      defaults: SessionOptions
+    }): Promise<{ ok: boolean; message?: string; workspaces: Workspace[]; workspace?: Workspace }>
     /** Remove a workspace by id; returns the remaining list. */
     remove(id: string): Promise<Workspace[]>
   }

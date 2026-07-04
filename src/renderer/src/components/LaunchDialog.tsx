@@ -6,6 +6,8 @@ export interface LaunchValues {
   /** Only meaningful in 'workspace' mode. */
   path: string
   options: SessionOptions
+  /** Workspace mode only: a GitHub repo to clone into `path` when creating. */
+  repoUrl?: string
 }
 
 interface Props {
@@ -14,8 +16,15 @@ interface Props {
   title: string
   submitLabel: string
   initial: LaunchValues
-  onSubmit: (v: LaunchValues) => void
+  /** Do the work; resolve with an error string to keep the dialog open, or null on success. */
+  onSubmit: (v: LaunchValues) => Promise<string | null>
   onCancel: () => void
+}
+
+/** The folder name a clone URL produces: `.../foo.git` or `owner/foo` → `foo`. */
+function repoName(url: string): string {
+  const m = url.trim().replace(/\/+$/, '').match(/([^/]+?)(\.git)?$/)
+  return (m && m[1]) || ''
 }
 
 /** Preview of the exact command a session will launch with. */
@@ -39,7 +48,16 @@ export function LaunchDialog({
 }: Props): JSX.Element {
   const [name, setName] = useState(initial.name)
   const [path, setPath] = useState(initial.path)
+  const [repoUrl, setRepoUrl] = useState(initial.repoUrl ?? '')
   const [options, setOptions] = useState<SessionOptions>(initial.options)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  // Track values we auto-filled from the repo URL, so we only overwrite our own
+  // suggestion — never something the user typed.
+  const [autoPath, setAutoPath] = useState(initial.path)
+  const [autoName, setAutoName] = useState(initial.name)
+
+  const cloning = mode === 'workspace' && repoUrl.trim().length > 0
 
   const set = <K extends keyof SessionOptions>(key: K, value: SessionOptions[K]): void =>
     setOptions((o) => ({ ...o, [key]: value }))
@@ -52,32 +70,80 @@ export function LaunchDialog({
     }
   }
 
-  // A session inherits its workspace; a workspace needs at least a name OR a
-  // folder to identify it — but you can create one before you have either a
-  // directory or a GitHub repo (sessions fall back to your home directory until
-  // you set a folder).
-  const canSubmit = mode === 'session' || path.trim().length > 0 || name.trim().length > 0
-  const submit = (): void => {
-    if (!canSubmit) return
-    onSubmit({ name: name.trim(), path: path.trim(), options })
+  // Typing a repo URL prefills the destination folder (~/<repo>) and name, unless
+  // the user has already customised them.
+  const onRepoUrl = (raw: string): void => {
+    setRepoUrl(raw)
+    const repo = repoName(raw)
+    if (repo) {
+      const suggestedPath = `~/${repo}`
+      if (path === autoPath) {
+        setPath(suggestedPath)
+        setAutoPath(suggestedPath)
+      }
+      if (name === autoName) {
+        setName(repo)
+        setAutoName(repo)
+      }
+    }
+  }
+
+  // A session inherits its workspace; a workspace needs a repo, a name, OR a
+  // folder to identify it — but you can create one before you have any of them
+  // (sessions fall back to your home directory until you set a folder).
+  const canSubmit =
+    mode === 'session' || cloning || path.trim().length > 0 || name.trim().length > 0
+  const submit = async (): Promise<void> => {
+    if (!canSubmit || busy) return
+    setBusy(true)
+    setError(null)
+    const err = await onSubmit({
+      name: name.trim(),
+      path: path.trim(),
+      options,
+      repoUrl: cloning ? repoUrl.trim() : undefined
+    })
+    if (err) {
+      setError(err)
+      setBusy(false)
+    }
+    // On success the parent unmounts this dialog.
   }
 
   return (
-    <div className="modal-backdrop" onClick={onCancel}>
+    <div className="modal-backdrop" onClick={busy ? undefined : onCancel}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h2 className="modal-title">{title}</h2>
 
         {mode === 'workspace' && (
           <label className="field">
-            <span>Folder (optional)</span>
+            <span>GitHub repo (optional)</span>
+            <input
+              className="text-input mono"
+              value={repoUrl}
+              placeholder="https://github.com/owner/repo — or owner/repo"
+              disabled={busy}
+              onChange={(e) => onRepoUrl(e.target.value)}
+            />
+          </label>
+        )}
+
+        {mode === 'workspace' && (
+          <label className="field">
+            <span>{cloning ? 'Clone into (new folder)' : 'Folder (optional)'}</span>
             <div className="field-row">
               <input
                 className="text-input mono"
                 value={path}
-                placeholder="/path/to/project — leave blank to set up later"
+                placeholder={
+                  cloning
+                    ? '~/repo — where to clone it'
+                    : '/path/to/project — leave blank to set up later'
+                }
+                disabled={busy}
                 onChange={(e) => setPath(e.target.value)}
               />
-              <button className="btn" onClick={browse}>
+              <button className="btn" onClick={browse} disabled={busy}>
                 Browse…
               </button>
             </div>
@@ -138,12 +204,14 @@ export function LaunchDialog({
 
         <div className="cmd-preview mono">{previewCommand(options)}</div>
 
+        {error && <div className="dialog-error mono">{error}</div>}
+
         <div className="modal-actions">
-          <button className="btn" onClick={onCancel}>
+          <button className="btn" onClick={onCancel} disabled={busy}>
             Cancel
           </button>
-          <button className="btn primary" disabled={!canSubmit} onClick={submit}>
-            {submitLabel}
+          <button className="btn primary" disabled={!canSubmit || busy} onClick={submit}>
+            {busy ? (cloning ? 'Cloning…' : 'Working…') : cloning ? 'Clone & create' : submitLabel}
           </button>
         </div>
       </div>

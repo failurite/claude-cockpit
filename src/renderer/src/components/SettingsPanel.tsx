@@ -137,9 +137,22 @@ export function SettingsPanel({
           ) : (
             <>
               <p className="settings-note">
-                The Cockpit Dev session runs inside a persistent tmux session so it survives app
-                restarts. These are cockpit-owned and listed here so none go rogue.
+                Cockpit sessions run inside persistent tmux sessions so they survive app restarts
+                (the process keeps running; Cockpit re-attaches). These are cockpit-owned and listed
+                here so none go rogue.
               </p>
+              <label className="settings-check">
+                <input
+                  type="checkbox"
+                  checked={settings ? settings.keepSessionsAlive : true}
+                  onChange={async (e) =>
+                    setSettings(
+                      await window.cockpit.settings.update({ keepSessionsAlive: e.target.checked })
+                    )
+                  }
+                />
+                Keep sessions alive across app restarts (tmux) — the Dev session always persists
+              </label>
               <label className="settings-check">
                 <input
                   type="checkbox"

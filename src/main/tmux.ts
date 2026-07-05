@@ -46,6 +46,17 @@ export function devLaunchCommand(cwd: string, claudeArgs: string[] = []): string
 }
 
 /**
+ * Wrap any inner command so it runs inside a persistent, named cockpit tmux
+ * session (`-A` = attach-if-exists). The tmux *server* outlives cockpit, so the
+ * inner process survives app restarts; on the next launch we just re-attach and
+ * the inner command (flags, --resume, prompt) is ignored. This is the generic
+ * form of `devLaunchCommand`, used to back every claude session (not just dev).
+ */
+export function tmuxWrap(name: string, cwd: string, innerCmd: string): string {
+  return `tmux new-session -A -s ${name} -c ${sq(cwd)} ${innerCmd}`
+}
+
+/**
  * Turn on tmux mouse mode for one cockpit session (session-scoped — never `-g`,
  * so the user's own tmux sessions are untouched). Without it, tmux translates
  * trackpad wheel into Up/Down arrows for alt-screen apps, which makes scrolling

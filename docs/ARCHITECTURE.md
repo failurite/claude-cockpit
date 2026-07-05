@@ -36,7 +36,7 @@ src/
 │   ├── sessions-rpc.ts       localhost RPC (:47617) the cross-session MCP shim
 │   │                         calls: list siblings / read a session's digest
 │   ├── git.ts                git status / push / pull per workspace dir
-│   ├── tmux.ts               persistent tmux backing for the dev session (POSIX)
+│   ├── tmux.ts               persistent tmux backing for every session (POSIX)
 │   ├── platform.ts           OS choke point: pane shell, arg/path quoting, NPM_BIN
 │   ├── transcripts.ts        chokidar watcher → active sub-agent count;
 │   │                         sessionDigest() → another session's context summary
@@ -122,9 +122,17 @@ This is a heuristic and a good place to contribute a more exact implementation
   tilde-expanded at the spawn choke point (`expandTilde` in `sessions.ts`) so a
   hand-typed `~/code/x` can't make `pty.spawn` fail.
 - **Persistence/restore:** `SessionManager.persist()` writes every pane (name,
-  cwd, command, kind, options, Claude `session_id`, embedded-browser tab URLs) on
-  each change; `restore()` respawns them on boot with `claude --resume <id>` and
-  reopens their browser tabs.
+  cwd, command, kind, options, Claude `session_id`, **tmux name**, embedded-browser
+  tab URLs) on each change; `restore()` respawns them on boot and reopens their
+  browser tabs. On macOS/Linux every claude session is tmux-backed (`tmuxWrap`,
+  attach-or-create under a stable `cockpit-<id>` name that doubles as the pane id),
+  so restore **re-attaches the live process** — a Cockpit restart / update-app
+  relaunch keeps running tasks, scrollback, and `/model` overrides. If the tmux
+  session is gone (crash) or tmux is unavailable (Windows), it falls back to
+  `claude --resume <id>`. Leak prevention: `close`/`archive`/`closeForWorkspace`
+  kill the pane's tmux session, and a boot-time `sweepOrphanTmux()` kills any
+  cockpit-owned tmux session no live pane owns. Opt out via the "Keep sessions
+  alive" setting (`disableSessionTmux` flag); the dev session always persists.
 - **Archive/reopen:** `archive(id)` captures the same record (via the shared
   `toPersisted`, snapshotting tabs *before* the pane teardown) into a separate
   `archived` store list, then kills the pty like `close()` — but the record lives

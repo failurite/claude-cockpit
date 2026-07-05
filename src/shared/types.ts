@@ -429,6 +429,13 @@ export interface AppSettings {
   killTmuxOnQuit: boolean
   /** Hide the built-in "Cockpit" workspace (the app's own repo) from the sidebar. */
   hideCockpitWorkspace: boolean
+  /**
+   * Back every claude session with a persistent tmux session so its process (and
+   * live state) survives an app restart (macOS/Linux; default true). Off = fall
+   * back to `claude --resume` (conversation restores, process is fresh). The dev
+   * session always persists regardless.
+   */
+  keepSessionsAlive: boolean
 }
 
 export interface AppInfo {

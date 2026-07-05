@@ -371,12 +371,18 @@ async function bootstrap(): Promise<void> {
   if (devAvailable && !manager.list().some((s) => s.kind === 'dev')) {
     createDevSession()
   }
+
+  // With every pane now known (restored + dev), kill any cockpit tmux session
+  // that no pane owns — orphans a crash could have left behind.
+  manager.sweepOrphanTmux()
 }
 
 function getSettings(): AppSettings {
   return {
     killTmuxOnQuit: getFlag('killTmuxOnQuit'),
-    hideCockpitWorkspace: getFlag('hideCockpitWorkspace')
+    hideCockpitWorkspace: getFlag('hideCockpitWorkspace'),
+    // Stored as an opt-OUT flag so persistence is on by default.
+    keepSessionsAlive: !getFlag('disableSessionTmux')
   }
 }
 
@@ -384,6 +390,8 @@ function updateSettings(patch: Partial<AppSettings>): AppSettings {
   if (typeof patch.killTmuxOnQuit === 'boolean') setFlag('killTmuxOnQuit', patch.killTmuxOnQuit)
   if (typeof patch.hideCockpitWorkspace === 'boolean')
     setFlag('hideCockpitWorkspace', patch.hideCockpitWorkspace)
+  if (typeof patch.keepSessionsAlive === 'boolean')
+    setFlag('disableSessionTmux', !patch.keepSessionsAlive)
   return getSettings()
 }
 

@@ -34,8 +34,13 @@ Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design. Key files
 - `src/main/issues.ts` — gh CLI wrapper (list/view/close GitHub issues).
 - `src/main/worktrees.ts` — per-issue worktree/branch isolation + the serialized
   Done flow (rebase → merge to default branch → push → cleanup).
-- `src/main/tmux.ts` — persistent tmux backing for the dev session (macOS/Linux
-  only; `tmuxBin()` short-circuits to null on Windows).
+- `src/main/tmux.ts` — persistent tmux backing for **every** claude session
+  (macOS/Linux only; `tmuxBin()` short-circuits to null on Windows). Each pane's
+  tmux name IS its pane id (stable across restarts, so the frozen hook env still
+  matches); `tmuxWrap()` is the generic attach-or-create. Sessions are killed on
+  close/archive/workspace-remove and a boot-time `sweepOrphanTmux()` clears any
+  left by a crash — so tmux never leaks past a pane. Opt out via the
+  `disableSessionTmux` flag (dev always persists).
 - `src/main/platform.ts` — the cross-platform choke point: `buildShellInvocation()`
   (login-zsh `exec` on POSIX vs `cmd.exe /c` on Windows), `quoteArg`/`quotePath`
   (POSIX single-quote vs Windows double-quote, no backslash-doubling), `NPM_BIN`,
@@ -79,9 +84,12 @@ npx electron scripts/webview-cdp-smoke.cjs   # embedded-browser control → SMOK
 
 ## How "rebuild & relaunch" works
 
-The app persists every open pane (name, cwd, command, Claude `session_id`) to its
-userData store on each change; on boot `SessionManager.restore()` respawns panes,
-using `claude --resume <id>` to bring back conversations.
+The app persists every open pane (name, cwd, command, Claude `session_id`, tmux
+name) to its userData store on each change; on boot `SessionManager.restore()`
+respawns panes. On macOS/Linux each pane is tmux-backed, so restore **re-attaches
+the still-running claude process** (live state intact); if the tmux session is
+gone (or on Windows) it falls back to `claude --resume <id>` to bring back the
+conversation in a fresh process.
 
 ## Updating the installed app (local, no GitHub)
 
@@ -113,9 +121,10 @@ asar).
 - All OS differences route through `src/main/platform.ts` — don't sprinkle
   `process.platform` checks. The pane shell, arg/path quoting, and `npm` binary
   all come from there.
-- Windows has no tmux: `tmuxBin()` returns null, so the dev session uses the
-  ephemeral pane + `claude --resume` fallback (no live-process persistence across
-  restarts — acceptable, conversations still restore).
+- Windows has no tmux: `tmuxBin()` returns null, so all sessions use the ephemeral
+  pane + `claude --resume` fallback (no live-process persistence across restarts —
+  acceptable, conversations still restore). tmux persistence is a macOS/Linux-only
+  enhancement; there's no clean Windows equivalent.
 - The out-of-band plumbing is already portable: hooks run as `node "<path>"`
   (`hooks-install.ts`, via `quotePath` so Windows `C:\…` paths aren't backslash-
   doubled) and MCP shims via `{ command: 'node', args: [...] }`. Both require

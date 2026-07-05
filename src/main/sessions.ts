@@ -2,6 +2,7 @@ import { EventEmitter } from 'events'
 import { existsSync, mkdirSync, statSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
+import { randomUUID } from 'crypto'
 import pty from '@homebridge/node-pty-prebuilt-multiarch'
 import type { IPty } from '@homebridge/node-pty-prebuilt-multiarch'
 import type {
@@ -16,6 +17,7 @@ import {
   getSavedSessions,
   getArchivedSessions,
   saveArchivedSessions,
+  getFlag,
   type PersistedSession,
   type ArchivedSession
 } from './store.js'
@@ -24,9 +26,12 @@ import {
   isTmuxAvailable,
   devLaunchCommand,
   devSessionStartCommand,
+  tmuxWrap,
   killCockpitSession,
+  listCockpitSessions,
   enableMouse,
-  DEV_TMUX_NAME
+  DEV_TMUX_NAME,
+  TMUX_PREFIX
 } from './tmux.js'
 import { buildShellInvocation, quoteArg, quotePath } from './platform.js'
 import type { IssueRef } from '../shared/types.js'
@@ -189,6 +194,8 @@ export class SessionManager extends EventEmitter {
       claudeSessionId: p.session.claudeSessionId,
       workspaceId: p.session.workspaceId,
       options: p.session.options,
+      // Persist the tmux name so restore re-attaches the same live process.
+      tmuxSession: p.session.tmuxSession,
       issue: p.session.issue,
       // Drop blank tabs so we don't restore empty about:blank panes.
       browserTabs: (this.browser.getTabs?.(p.session.id) ?? []).filter(
@@ -218,10 +225,31 @@ export class SessionManager extends EventEmitter {
         workspaceId: s.workspaceId,
         options: s.options,
         resumeId: s.claudeSessionId,
-        issue: s.issue ?? null
+        issue: s.issue ?? null,
+        // Re-attach the same tmux session if it's still alive (process persists);
+        // if it's gone, attach-or-create makes a fresh one and --resume restores
+        // the conversation.
+        tmuxSession: s.tmuxSession ?? null
       })
       // Reopen this pane's embedded-browser tabs (cookies/logins persist via the profile).
       if (s.browserTabs?.length) this.browser.restoreTabs?.(session.id, s.browserTabs)
+    }
+  }
+
+  /**
+   * Kill any cockpit-owned tmux session that no live pane owns — orphans left by
+   * a crash or hard kill (clean teardown already kills tmux via close/archive).
+   * Call once at boot, AFTER restore() + the dev session exist, so we never sweep
+   * a session we're about to (or just did) re-attach.
+   */
+  sweepOrphanTmux(): void {
+    if (!isTmuxAvailable()) return
+    const owned = new Set<string>()
+    for (const p of this.panes.values()) {
+      if (p.session.tmuxSession) owned.add(p.session.tmuxSession)
+    }
+    for (const name of listCockpitSessions()) {
+      if (!owned.has(name)) killCockpitSession(name)
     }
   }
 
@@ -238,6 +266,8 @@ export class SessionManager extends EventEmitter {
     issue?: IssueRef | null
     /** Kickoff prompt passed to claude on first launch (not on resume). */
     initialPrompt?: string
+    /** Persisted tmux session name to re-attach on restore (null = mint a fresh one). */
+    tmuxSession?: string | null
   }): TerminalSession {
     const cwd = resolveSpawnDir(opts?.cwd)
     const command = opts?.command || 'claude'
@@ -251,27 +281,47 @@ export class SessionManager extends EventEmitter {
     // panes persisted before that workspace existed).
     const workspaceId = kind === 'dev' ? COCKPIT_WORKSPACE_ID : (opts?.workspaceId ?? null)
 
-    // The dev session is special: when tmux is available it runs inside a
-    // persistent tmux server (survives app restarts) under a stable pane id, so
-    // its frozen hook env keeps matching after we re-attach.
-    const tmuxDev = kind === 'dev' && isTmuxAvailable()
-    if (tmuxDev) {
-      const existing = this.panes.get(DEV_TMUX_NAME)
+    // Every claude session runs inside a persistent tmux session (when tmux is
+    // available) so its process — and live state — survives an app restart; we
+    // just re-attach. The tmux name IS the pane id, so it (and the frozen hook
+    // env) stay stable across restarts. The dev session uses a fixed name; other
+    // sessions carry a persisted name on restore or mint one when new. Persistence
+    // for non-dev sessions is opt-out via the `disableSessionTmux` flag; dev always
+    // persists.
+    const useTmux =
+      command === 'claude' &&
+      isTmuxAvailable() &&
+      (kind === 'dev' || !getFlag('disableSessionTmux'))
+    const tmuxName = useTmux
+      ? kind === 'dev'
+        ? DEV_TMUX_NAME
+        : opts?.tmuxSession || `${TMUX_PREFIX}${randomUUID().slice(0, 8)}`
+      : null
+
+    if (tmuxName) {
+      const existing = this.panes.get(tmuxName)
       if (existing) return existing.session
-      // Flag drift: `new-session -A` re-attach ignores flags, so a long-lived dev
-      // session keeps whatever it was first created with (e.g. a stale `--chrome`
-      // that opens EXTERNAL Chrome instead of the embedded browser). If the live
-      // session's command differs from what we'd launch now, kill it so the
-      // attach-or-create below recreates it fresh with the current flags.
-      const desiredCmd = ['claude', ...claudeFlags(options)].join(' ').trim()
-      const liveCmd = devSessionStartCommand()
-      if (liveCmd && liveCmd !== desiredCmd) killCockpitSession(DEV_TMUX_NAME)
+      // Dev only: flag drift. `new-session -A` re-attach ignores flags, so a
+      // long-lived dev session keeps whatever it was first created with (e.g. a
+      // stale `--chrome` that opens EXTERNAL Chrome). If the live command differs
+      // from what we'd launch now, kill it so attach-or-create recreates it fresh.
+      // (Other sessions don't drift-check — their command legitimately changes as
+      // they learn --resume; apply flag changes with ⟳ Restart or close+reopen.)
+      if (kind === 'dev') {
+        const desiredCmd = ['claude', ...claudeFlags(options)].join(' ').trim()
+        const liveCmd = devSessionStartCommand()
+        if (liveCmd && liveCmd !== desiredCmd) killCockpitSession(DEV_TMUX_NAME)
+      }
     }
-    const id = tmuxDev ? DEV_TMUX_NAME : `pane-${++seq}-${Date.now().toString(36)}`
+
+    // Bump seq once per pane so "Session N" fallback names stay unique even for
+    // tmux-backed panes (whose id is the tmux name, not `pane-N`).
+    const seqNum = ++seq
+    const id = tmuxName ?? `pane-${seqNum}-${Date.now().toString(36)}`
     // New sessions get a generic, unique name; restores carry their persisted name
     // via opts.name. We deliberately don't inherit the last session's name for the
     // same cwd/command — a fresh "New session" should look fresh.
-    const name = opts?.name || `Session ${seq}`
+    const name = opts?.name || `Session ${seqNum}`
 
     // Only resume if the conversation's transcript still exists — otherwise
     // `claude --resume <id>` leaves a pane stuck on "No conversation found with
@@ -286,7 +336,8 @@ export class SessionManager extends EventEmitter {
       options,
       resumeId,
       initialPrompt: opts?.initialPrompt,
-      tmuxDev
+      kind,
+      tmuxName
     })
     const proc = this.spawnPty(id, cwd, launch)
 
@@ -298,7 +349,7 @@ export class SessionManager extends EventEmitter {
       kind,
       workspaceId,
       options,
-      tmuxSession: tmuxDev ? DEV_TMUX_NAME : null,
+      tmuxSession: tmuxName,
       issue: opts?.issue ?? null,
       claudeSessionId: null,
       status: 'starting',
@@ -315,9 +366,9 @@ export class SessionManager extends EventEmitter {
 
     // Scrolling fix: tmux without mouse mode turns trackpad wheel into arrow keys
     // for alt-screen apps. Set it once the session exists (retry covers first create).
-    if (tmuxDev) {
-      setTimeout(() => enableMouse(DEV_TMUX_NAME), 1000)
-      setTimeout(() => enableMouse(DEV_TMUX_NAME), 4000)
+    if (tmuxName) {
+      setTimeout(() => enableMouse(tmuxName), 1000)
+      setTimeout(() => enableMouse(tmuxName), 4000)
     }
 
     this.wireProc(pane, id)
@@ -337,27 +388,31 @@ export class SessionManager extends EventEmitter {
     options: SessionOptions
     resumeId: string | null
     initialPrompt?: string
-    tmuxDev: boolean
+    kind: 'normal' | 'dev'
+    tmuxName: string | null
   }): string {
-    if (o.tmuxDev) {
-      // attach-or-create the persistent dev session; tmux keeps claude alive.
-      // Flags (e.g. --dangerously-skip-permissions --chrome) apply on first create.
+    if (o.kind === 'dev' && o.tmuxName) {
+      // The dev session stays exactly as before: plain `claude <flags>` inside a
+      // fixed-name tmux session (no browser/cross-session MCP, no --resume — it
+      // relies on tmux persistence). Its drift check compares this same command.
       return devLaunchCommand(o.cwd, claudeFlags(o.options))
     }
-    // Build `claude <flags> [--resume <id>]`. Non-claude commands launch verbatim.
-    const parts =
-      o.command === 'claude'
-        ? [
-            'claude',
-            // Kickoff prompt (e.g. issue context) — only on first launch, not on
-            // resume. It MUST precede the flags: `--mcp-config <configs...>` is
-            // variadic and would swallow a trailing positional as a config path.
-            ...(o.initialPrompt && !o.resumeId ? [quoteArg(o.initialPrompt)] : []),
-            ...claudeFlags(o.options, this.browser.mcpConfig, this.sessions.mcpConfig),
-            ...(o.resumeId ? ['--resume', o.resumeId] : [])
-          ]
-        : [o.command]
-    return parts.join(' ')
+    if (o.command !== 'claude') return o.command
+    // Build `claude [prompt] <flags> [--resume <id>]`.
+    const parts = [
+      'claude',
+      // Kickoff prompt (e.g. issue context) — only on first launch, not on resume.
+      // It MUST precede the flags: `--mcp-config <configs...>` is variadic and
+      // would swallow a trailing positional as a config path.
+      ...(o.initialPrompt && !o.resumeId ? [quoteArg(o.initialPrompt)] : []),
+      ...claudeFlags(o.options, this.browser.mcpConfig, this.sessions.mcpConfig),
+      ...(o.resumeId ? ['--resume', o.resumeId] : [])
+    ]
+    const inner = parts.join(' ')
+    // A tmux-backed session wraps the command so it survives app restarts (the
+    // inner command runs on first create; re-attach ignores it). No tmux → run
+    // the command directly and rely on `--resume` across restarts.
+    return o.tmuxName ? tmuxWrap(o.tmuxName, o.cwd, inner) : inner
   }
 
   /**
@@ -425,13 +480,24 @@ export class SessionManager extends EventEmitter {
     } catch {
       /* already dead */
     }
+    // For a tmux-backed session, killing the pty only detaches — the claude
+    // process keeps running and attach-or-create would just re-attach it. Kill
+    // the tmux session so the relaunch starts a genuinely fresh claude.
+    if (s.tmuxSession) killCockpitSession(s.tmuxSession)
     if (!resumeId && s.claudeSessionId) {
       this.claudeIndex.delete(s.claudeSessionId)
       s.claudeSessionId = null
     }
 
     const cwd = resolveSpawnDir(s.cwd)
-    const launch = this.buildLaunch({ command: s.command, cwd, options, resumeId, tmuxDev: false })
+    const launch = this.buildLaunch({
+      command: s.command,
+      cwd,
+      options,
+      resumeId,
+      kind: s.kind,
+      tmuxName: s.tmuxSession
+    })
     p.buffer = ''
     p.proc = this.spawnPty(id, cwd, launch)
     this.wireProc(p, id)
@@ -516,6 +582,9 @@ export class SessionManager extends EventEmitter {
     } catch {
       /* already dead */
     }
+    // Killing the pty only detaches from tmux — kill the tmux session too so the
+    // claude process doesn't linger past the pane (no orphaned sessions).
+    if (p.session.tmuxSession) killCockpitSession(p.session.tmuxSession)
     if (p.session.claudeSessionId) this.claudeIndex.delete(p.session.claudeSessionId)
     this.panes.delete(id)
     this.emit('closed', id) // let the BrowserManager tear down this pane's tabs
@@ -559,6 +628,9 @@ export class SessionManager extends EventEmitter {
     } catch {
       /* already dead */
     }
+    // Archive means "close & save": kill the tmux process too (reopen later via
+    // --resume). A fresh tmux session is minted on restoreArchived().
+    if (p.session.tmuxSession) killCockpitSession(p.session.tmuxSession)
     if (p.session.claudeSessionId) this.claudeIndex.delete(p.session.claudeSessionId)
     this.panes.delete(id)
     this.emit('closed', id)

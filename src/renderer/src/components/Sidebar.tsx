@@ -199,21 +199,10 @@ export function Sidebar({
           {s.subagentCount > 0 && ` · ⛓ ${s.subagentCount}`}
         </span>
       </div>
-      {s.kind !== 'dev' && (
-        <button
-          className="archive-btn"
-          title="Archive — close but save to reopen later (keeps conversation + tabs)"
-          onClick={(e) => {
-            e.stopPropagation()
-            onArchive(s.id)
-          }}
-        >
-          📦
-        </button>
-      )}
+      {/* Archive lives in the right-click menu — the row stays uncluttered. */}
       <button
         className="close-btn"
-        title="Close session"
+        title="Close session (right-click for Archive)"
         onClick={(e) => {
           e.stopPropagation()
           onClose(s.id)

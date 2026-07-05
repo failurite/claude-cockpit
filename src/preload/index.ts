@@ -50,6 +50,7 @@ const api: CockpitApi = {
   restartSession: (id) => ipcRenderer.invoke('sessions:restart', id),
   closeAllSessions: () => ipcRenderer.invoke('sessions:close-all'),
   renameSession: (id, name) => ipcRenderer.invoke('sessions:rename', id, name),
+  setSessionModel: (id, arg) => ipcRenderer.send('sessions:set-model', id, arg),
   archiveSession: (id) => ipcRenderer.invoke('sessions:archive', id),
   archivedSessions: () => ipcRenderer.invoke('sessions:archived-list'),
   restoreArchivedSession: (archivedId) => ipcRenderer.invoke('sessions:restore-archived', archivedId),

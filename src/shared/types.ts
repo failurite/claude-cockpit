@@ -82,6 +82,8 @@ export interface TerminalSession {
    * token meter; cache-read tokens are excluded (cheap and dominate every turn).
    */
   tokensTotal: number
+  /** Concrete model id of the latest assistant turn (e.g. `claude-opus-4-8`), or null before any turn. */
+  model: string | null
   /** True while this session is actively driving Chrome (claude-in-chrome MCP tools). */
   usingChrome: boolean
   /** Most recent browser action target (e.g. host or tool), shown when usingChrome. */
@@ -304,6 +306,12 @@ export interface CockpitApi {
   /** Permanently delete an archived session record. Returns the updated archived list. */
   deleteArchivedSession(archivedId: string): Promise<ArchivedSessionInfo[]>
   renameSession(id: string, name: string): Promise<void>
+  /**
+   * Switch a session's model by driving `/model <arg>` in its pty. `arg` is a
+   * Claude Code model alias (`opus`/`sonnet`/`haiku`/`default`/…) or a `claude-*`
+   * id. `session.model` updates once the next assistant turn lands.
+   */
+  setSessionModel(id: string, arg: string): void
   /** Send user keystrokes/data into a pty. */
   write(id: string, data: string): void
   /** Notify main that the xterm view resized. */

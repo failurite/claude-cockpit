@@ -13,6 +13,12 @@ import { BrowserPanel } from './components/BrowserPanel'
 import { LaunchDialog, type LaunchValues } from './components/LaunchDialog'
 import { SettingsPanel } from './components/SettingsPanel'
 
+/** Short, footer-friendly model label: `claude-opus-4-8[1m]` → `opus-4-8[1m]`; null → `…`. */
+function shortModel(model: string | null): string {
+  if (!model) return '…'
+  return model.replace(/^claude-/, '')
+}
+
 /** Which modal (if any) is open, and the context it needs. */
 type Dialog =
   | { kind: 'workspace-new' }
@@ -416,6 +422,36 @@ export default function App(): JSX.Element {
             {active.tokensTotal > 0 && (
               <span className="muted" title="Tokens used this conversation (input + output + cache-creation)">
                 ◇ {active.tokensTotal >= 1000 ? `${(active.tokensTotal / 1000).toFixed(1)}k` : active.tokensTotal} tok
+              </span>
+            )}
+            {active.command === 'claude' && (
+              <span
+                className="model-box"
+                title={
+                  active.model
+                    ? `Model in use: ${active.model} — pick another to switch (runs /model)`
+                    : 'Model not detected yet — pick one to set it (runs /model)'
+                }
+              >
+                <span className="model-name mono">◆ {shortModel(active.model)}</span>
+                <select
+                  className="model-select"
+                  value=""
+                  onChange={(e) => {
+                    if (e.target.value) window.cockpit.setSessionModel(active.id, e.target.value)
+                    e.currentTarget.value = ''
+                  }}
+                >
+                  <option value="" disabled>
+                    change…
+                  </option>
+                  <option value="default">Default</option>
+                  <option value="opus">Opus</option>
+                  <option value="sonnet">Sonnet</option>
+                  <option value="haiku">Haiku</option>
+                  <option value="opus[1m]">Opus (1M)</option>
+                  <option value="sonnet[1m]">Sonnet (1M)</option>
+                </select>
               </span>
             )}
             <span className="spacer" />

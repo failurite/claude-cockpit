@@ -62,6 +62,19 @@ const DEV_SESSION_OPTIONS: SessionOptions = {
  * `pty.spawn` fail to start and the pane would exit instantly. Resolve it here,
  * the single choke point every session passes through.
  */
+/** Claude Code `/model` aliases we accept from the UI (besides any `claude-*` id). */
+const KNOWN_MODEL_ARGS = new Set([
+  'default',
+  'best',
+  'fable',
+  'opus',
+  'sonnet',
+  'haiku',
+  'opusplan',
+  'opus[1m]',
+  'sonnet[1m]'
+])
+
 export function expandTilde(p: string): string {
   if (p === '~') return homedir()
   if (p.startsWith('~/')) return join(homedir(), p.slice(2))
@@ -291,6 +304,7 @@ export class SessionManager extends EventEmitter {
       status: 'starting',
       subagentCount: 0,
       tokensTotal: 0,
+      model: null,
       usingChrome: false,
       chromeActivity: null,
       lastActivity: 'launching',
@@ -426,7 +440,11 @@ export class SessionManager extends EventEmitter {
     // claudeSessionId is unchanged, so bindClaudeSession would no-op).
     if (resumeId) {
       p.unwatch = watchTranscriptForSession(resumeId, (stats) =>
-        this.patch(id, { subagentCount: stats.subagents, tokensTotal: stats.tokens })
+        this.patch(id, {
+          subagentCount: stats.subagents,
+          tokensTotal: stats.tokens,
+          model: stats.model ?? undefined
+        })
       )
     }
 
@@ -435,6 +453,7 @@ export class SessionManager extends EventEmitter {
       status: 'starting' as SessionStatus,
       subagentCount: 0,
       tokensTotal: 0,
+      model: null,
       usingChrome: false,
       chromeActivity: null,
       lastActivity: 'restarting',
@@ -602,10 +621,28 @@ export class SessionManager extends EventEmitter {
     this.claudeIndex.set(claudeSessionId, paneId)
     p.unwatch?.()
     p.unwatch = watchTranscriptForSession(claudeSessionId, (stats) =>
-      this.patch(paneId, { subagentCount: stats.subagents, tokensTotal: stats.tokens })
+      this.patch(paneId, {
+        subagentCount: stats.subagents,
+        tokensTotal: stats.tokens,
+        model: stats.model ?? undefined
+      })
     )
     this.patch(paneId, {})
     this.persist()
+  }
+
+  /**
+   * Switch a session's model by typing `/model <arg>` into its pty (reuses the
+   * paste-then-delayed-Enter submit). `arg` is a Claude Code model alias
+   * (`opus`/`sonnet`/`haiku`/`default`/…) or a `claude-*` id; anything else is
+   * rejected so we never inject arbitrary text. The transcript watcher reflects
+   * the new model back into `session.model` once the next turn lands.
+   */
+  setModel(paneId: string, arg: string): void {
+    const a = (arg || '').trim()
+    const ok = /^claude-[\w.[\]-]+$/i.test(a) || KNOWN_MODEL_ARGS.has(a)
+    if (!ok) return
+    this.sendPrompt(paneId, `/model ${a}`)
   }
 
   /** Cumulative tokens across all live sessions' conversations (for the load meter). */

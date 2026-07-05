@@ -998,6 +998,29 @@ body.dragging-h .v-resizer {
 .statusbar .subagents {
   color: var(--waiting);
 }
+/* Current model + a compact change-dropdown. */
+.model-box {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.model-box .model-name {
+  color: var(--text);
+  font-size: 11px;
+}
+.model-select {
+  background: var(--bg-elevated);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-size: 11px;
+  padding: 1px 4px;
+  cursor: pointer;
+}
+.model-select:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
 .statusbar .dev-tag {
   font-size: 10px;
   font-weight: 700;

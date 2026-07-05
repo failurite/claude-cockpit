@@ -273,6 +273,7 @@ async function bootstrap(): Promise<void> {
     return listCockpitSessions()
   })
   ipcMain.handle('sessions:rename', (_e, id: string, name: string) => manager.rename(id, name))
+  ipcMain.on('sessions:set-model', (_e, id: string, arg: string) => manager.setModel(id, arg))
   ipcMain.handle('sessions:archive', (_e, id: string) => {
     manager.archive(id)
     return manager.listArchivedInfo()

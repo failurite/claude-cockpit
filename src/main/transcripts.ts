@@ -31,6 +31,8 @@ export interface TranscriptStats {
   subagents: number
   /** Cumulative tokens (input + output + cache-creation) across assistant turns. */
   tokens: number
+  /** Concrete model id of the latest assistant turn (e.g. `claude-opus-4-8`), or null. */
+  model: string | null
 }
 
 /**
@@ -45,10 +47,11 @@ function readTranscriptStats(file: string): TranscriptStats {
   try {
     text = readFileSync(file, 'utf8')
   } catch {
-    return { subagents: 0, tokens: 0 }
+    return { subagents: 0, tokens: 0, model: null }
   }
   const open = new Set<string>()
   let tokens = 0
+  let model: string | null = null
   for (const line of text.split('\n')) {
     if (!line.trim()) continue
     let entry: any
@@ -68,15 +71,19 @@ function readTranscriptStats(file: string): TranscriptStats {
         }
       }
     }
-    const u = message?.usage
-    if (u && message?.role === 'assistant') {
-      tokens +=
-        (u.input_tokens || 0) +
-        (u.output_tokens || 0) +
-        (u.cache_creation_input_tokens || 0)
+    if (message?.role === 'assistant') {
+      const u = message?.usage
+      if (u) {
+        tokens +=
+          (u.input_tokens || 0) +
+          (u.output_tokens || 0) +
+          (u.cache_creation_input_tokens || 0)
+      }
+      // Latest assistant turn wins → the model currently in use.
+      if (typeof message.model === 'string') model = message.model
     }
   }
-  return { subagents: open.size, tokens }
+  return { subagents: open.size, tokens, model }
 }
 
 /** A compact, coordination-oriented summary of another session's transcript. */

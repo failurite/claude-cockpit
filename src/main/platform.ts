@@ -9,8 +9,54 @@
  * so the rest of the main process stays platform-neutral.
  */
 
+import { execFileSync } from 'child_process'
+import { homedir } from 'os'
+
 export const IS_WINDOWS = process.platform === 'win32'
 export const IS_MAC = process.platform === 'darwin'
+
+/**
+ * Fix the main process's PATH for GUI launches. A macOS/Linux app started from
+ * Finder/Dock inherits a *minimal* PATH (`/usr/bin:/bin:/usr/sbin:/sbin`) — not
+ * the user's shell PATH. So `execFile('gh'|'git'|'npm', …)` from the main process
+ * can't find Homebrew / user-installed tools even though they work in a terminal
+ * (and in panes, which spawn a login shell). Resolve the real PATH once at startup
+ * and merge it into `process.env.PATH`. No-op on Windows (a GUI app already
+ * inherits the user PATH from the registry). Idempotent — safe to call once.
+ */
+export function ensureUserPath(): void {
+  if (IS_WINDOWS) return
+  const parts: string[] = []
+  // 1) The user's login-shell PATH (covers nvm, asdf, custom installs). Best-effort
+  //    with a short timeout so a slow/odd profile can't stall startup.
+  try {
+    const shell = process.env.SHELL || '/bin/zsh'
+    const out = execFileSync(shell, ['-lc', 'command printf %s "$PATH"'], {
+      timeout: 3000,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore']
+    }).trim()
+    if (out) parts.push(...out.split(':'))
+  } catch {
+    /* fall back to the well-known dirs below */
+  }
+  // 2) Whatever we already have (the minimal GUI PATH).
+  if (process.env.PATH) parts.push(...process.env.PATH.split(':'))
+  // 3) Well-known bin dirs, so gh/tmux/etc. resolve even if the probe failed.
+  parts.push(
+    '/opt/homebrew/bin',
+    '/opt/homebrew/sbin',
+    '/usr/local/bin',
+    '/usr/local/sbin',
+    `${homedir()}/.local/bin`,
+    '/usr/bin',
+    '/bin',
+    '/usr/sbin',
+    '/sbin'
+  )
+  const seen = new Set<string>()
+  process.env.PATH = parts.filter((p) => p && !seen.has(p) && seen.add(p)).join(':')
+}
 
 /**
  * Quote one argument so it survives word-splitting inside a launch string.

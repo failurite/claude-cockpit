@@ -25,7 +25,7 @@ import {
   killCockpitSession,
   killAllCockpitSessions
 } from './tmux.js'
-import { IS_MAC, NPM_BIN } from './platform.js'
+import { IS_MAC, NPM_BIN, ensureUserPath } from './platform.js'
 import type { HookEvent, Workspace, AppSettings, SessionOptions } from '../shared/types.js'
 import { COCKPIT_WORKSPACE_ID } from '../shared/types.js'
 
@@ -778,6 +778,10 @@ function createWindow(): void {
 }
 
 app.whenReady().then(async () => {
+  // A Finder/Dock-launched app gets a minimal PATH — restore the user's real one
+  // so main-process tools (gh, git, tmux, npm) resolve. Must run before anything
+  // shells out (git status, gh issues, tmux probe).
+  ensureUserPath()
   // Dock icon (macOS dev) — packaged builds get it from the bundle.
   if (process.platform === 'darwin' && app.dock) {
     const img = nativeImage.createFromPath(ICON_PNG)

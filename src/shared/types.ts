@@ -284,6 +284,19 @@ export interface CockpitApi {
       name?: string
       defaults: SessionOptions
     }): Promise<{ ok: boolean; message?: string; workspaces: Workspace[]; workspace?: Workspace }>
+    /**
+     * Create a new GitHub repo (private/public) under the authenticated account
+     * via `gh repo create`, clone it into `parentDir/<name>`, and make a workspace
+     * for it. Returns `ok:false` + a message on failure (not authed, name taken).
+     */
+    createRepo(opts: {
+      name: string
+      private: boolean
+      parentDir?: string
+      description?: string
+      workspaceName?: string
+      defaults: SessionOptions
+    }): Promise<{ ok: boolean; message?: string; workspaces: Workspace[]; workspace?: Workspace }>
     /** Remove a workspace by id; returns the remaining list. */
     remove(id: string): Promise<Workspace[]>
   }

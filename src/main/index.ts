@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, dialog, nativeImage, shell } from 'electron'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
-import { existsSync } from 'fs'
+import { existsSync, mkdirSync } from 'fs'
 import { homedir } from 'os'
 import { randomUUID } from 'crypto'
 import { spawn } from 'child_process'
@@ -13,7 +13,7 @@ import { BrowserManager } from './browser.js'
 import { startBrowserRpc, type BrowserRpcServer } from './browser-rpc.js'
 import { startSessionsRpc, type SessionsRpcServer } from './sessions-rpc.js'
 import { gitStatus, gitPush, gitPull, gitClone } from './git.js'
-import { ghAvailable, listIssues, viewIssue, closeIssue } from './issues.js'
+import { ghAvailable, listIssues, viewIssue, closeIssue, createRepo } from './issues.js'
 import { createIssueWorktree, finishIssueWorktree } from './worktrees.js'
 import type { IssueDoneResult, IssueRef } from '../shared/types.js'
 import { initStore, getFlag, setFlag, getWorkspaces, saveWorkspaces } from './store.js'
@@ -357,6 +357,7 @@ async function bootstrap(): Promise<void> {
   ipcMain.handle('workspaces:list', () => listAllWorkspaces())
   ipcMain.handle('workspaces:save', (_e, ws: Workspace) => upsertWorkspace(ws))
   ipcMain.handle('workspaces:clone', (_e, opts) => cloneWorkspace(opts))
+  ipcMain.handle('workspaces:create-repo', (_e, opts) => createRepoWorkspace(opts))
   ipcMain.handle('workspaces:remove', (_e, id: string) => removeWorkspace(id))
 
   // Auto-update wiring (no-op outside a packaged build).
@@ -651,6 +652,51 @@ async function cloneWorkspace(opts: {
   const ws: Workspace = {
     id: randomUUID(),
     name: (opts.name || '').trim() || repoName,
+    path: dir,
+    defaults: opts.defaults
+  }
+  return { ok: true, workspaces: upsertWorkspace(ws), workspace: ws }
+}
+
+/**
+ * Create a brand-new GitHub repo under the authenticated account, clone it into
+ * `<parentDir>/<name>`, and create a workspace pointed at the checkout. Surfaces
+ * gh errors (not authed, name taken, missing `repo` scope) as `ok:false`.
+ */
+async function createRepoWorkspace(opts: {
+  name: string
+  private: boolean
+  parentDir?: string
+  description?: string
+  workspaceName?: string
+  defaults: SessionOptions
+}): Promise<{ ok: boolean; message?: string; workspaces: Workspace[]; workspace?: Workspace }> {
+  const repoName = (opts.name || '').trim()
+  if (!/^[\w.-]+$/.test(repoName)) {
+    return {
+      ok: false,
+      message: 'Repo name can only contain letters, numbers, and - . _',
+      workspaces: listAllWorkspaces()
+    }
+  }
+  const parent = expandTilde((opts.parentDir || '~').trim() || '~')
+  const dir = join(parent, repoName)
+  if (existsSync(dir)) {
+    return { ok: false, message: `That folder already exists:\n${dir}`, workspaces: listAllWorkspaces() }
+  }
+  try {
+    mkdirSync(parent, { recursive: true })
+  } catch {
+    /* gh will surface a clearer error if the parent is unusable */
+  }
+  const res = await createRepo(parent, repoName, {
+    private: opts.private,
+    description: opts.description
+  })
+  if (!res.ok) return { ok: false, message: res.message, workspaces: listAllWorkspaces() }
+  const ws: Workspace = {
+    id: randomUUID(),
+    name: (opts.workspaceName || '').trim() || repoName,
     path: dir,
     defaults: opts.defaults
   }

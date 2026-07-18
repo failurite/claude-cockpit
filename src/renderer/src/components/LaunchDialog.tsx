@@ -1,13 +1,20 @@
 import { useState } from 'react'
 import type { SessionOptions } from '../../../shared/types'
 
+/** How a new workspace's folder is sourced. */
+export type WorkspaceSource = 'folder' | 'clone' | 'new'
+
 export interface LaunchValues {
   name: string
-  /** Only meaningful in 'workspace' mode. */
+  /** Only meaningful in 'workspace' mode. Folder / clone destination / new-repo parent. */
   path: string
   options: SessionOptions
-  /** Workspace mode only: a GitHub repo to clone into `path` when creating. */
+  /** Workspace mode: how the workspace is created (default 'folder'). */
+  source?: WorkspaceSource
+  /** source==='clone': a GitHub repo URL (or owner/repo) to clone into `path`. */
   repoUrl?: string
+  /** source==='new': create this repo under the account, clone into `path`/<name>. */
+  newRepo?: { name: string; private: boolean; description: string }
 }
 
 interface Props {
@@ -16,6 +23,8 @@ interface Props {
   title: string
   submitLabel: string
   initial: LaunchValues
+  /** Show the Folder/Clone/New-repo source selector (only when creating a workspace). */
+  allowGithubSource?: boolean
   /** Do the work; resolve with an error string to keep the dialog open, or null on success. */
   onSubmit: (v: LaunchValues) => Promise<string | null>
   onCancel: () => void
@@ -43,21 +52,24 @@ export function LaunchDialog({
   title,
   submitLabel,
   initial,
+  allowGithubSource,
   onSubmit,
   onCancel
 }: Props): JSX.Element {
   const [name, setName] = useState(initial.name)
   const [path, setPath] = useState(initial.path)
+  const [source, setSource] = useState<WorkspaceSource>(initial.source ?? 'folder')
   const [repoUrl, setRepoUrl] = useState(initial.repoUrl ?? '')
+  const [newName, setNewName] = useState(initial.newRepo?.name ?? '')
+  const [isPrivate, setIsPrivate] = useState(initial.newRepo?.private ?? true)
+  const [desc, setDesc] = useState(initial.newRepo?.description ?? '')
   const [options, setOptions] = useState<SessionOptions>(initial.options)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // Track values we auto-filled from the repo URL, so we only overwrite our own
-  // suggestion — never something the user typed.
+  // Track values we auto-filled (from the repo URL / new-repo name) so we only
+  // overwrite our own suggestion — never something the user typed.
   const [autoPath, setAutoPath] = useState(initial.path)
   const [autoName, setAutoName] = useState(initial.name)
-
-  const cloning = mode === 'workspace' && repoUrl.trim().length > 0
 
   const set = <K extends keyof SessionOptions>(key: K, value: SessionOptions[K]): void =>
     setOptions((o) => ({ ...o, [key]: value }))
@@ -70,39 +82,60 @@ export function LaunchDialog({
     }
   }
 
-  // Typing a repo URL prefills the destination folder (~/<repo>) and name, unless
-  // the user has already customised them.
+  // Prefill the destination folder + names from the repo (clone URL or new name),
+  // unless the user has already customised them.
+  const suggestFrom = (repo: string): void => {
+    if (!repo) return
+    const suggestedPath = `~/${repo}`
+    if (path === autoPath) {
+      setPath(suggestedPath)
+      setAutoPath(suggestedPath)
+    }
+    if (name === autoName) {
+      setName(repo)
+      setAutoName(repo)
+    }
+  }
   const onRepoUrl = (raw: string): void => {
     setRepoUrl(raw)
-    const repo = repoName(raw)
-    if (repo) {
-      const suggestedPath = `~/${repo}`
-      if (path === autoPath) {
-        setPath(suggestedPath)
-        setAutoPath(suggestedPath)
-      }
-      if (name === autoName) {
-        setName(repo)
-        setAutoName(repo)
-      }
+    suggestFrom(repoName(raw))
+  }
+  const onNewName = (raw: string): void => {
+    setNewName(raw)
+    // For a new repo the folder is <parent>/<name>, so only the workspace name
+    // tracks the repo name (path stays the parent).
+    if (name === autoName) {
+      setName(raw)
+      setAutoName(raw)
     }
   }
 
-  // A session inherits its workspace; a workspace needs a repo, a name, OR a
-  // folder to identify it — but you can create one before you have any of them
-  // (sessions fall back to your home directory until you set a folder).
+  const cloning = mode === 'workspace' && allowGithubSource && source === 'clone'
+  const creating = mode === 'workspace' && allowGithubSource && source === 'new'
+
   const canSubmit =
-    mode === 'session' || cloning || path.trim().length > 0 || name.trim().length > 0
+    mode === 'session' ||
+    (cloning
+      ? repoUrl.trim().length > 0
+      : creating
+        ? newName.trim().length > 0
+        : path.trim().length > 0 || name.trim().length > 0)
+
   const submit = async (): Promise<void> => {
     if (!canSubmit || busy) return
     setBusy(true)
     setError(null)
-    const err = await onSubmit({
+    const values: LaunchValues = {
       name: name.trim(),
       path: path.trim(),
       options,
-      repoUrl: cloning ? repoUrl.trim() : undefined
-    })
+      source,
+      repoUrl: cloning ? repoUrl.trim() : undefined,
+      newRepo: creating
+        ? { name: newName.trim(), private: isPrivate, description: desc.trim() }
+        : undefined
+    }
+    const err = await onSubmit(values)
     if (err) {
       setError(err)
       setBusy(false)
@@ -110,14 +143,50 @@ export function LaunchDialog({
     // On success the parent unmounts this dialog.
   }
 
+  const submitText = busy
+    ? cloning
+      ? 'Cloning…'
+      : creating
+        ? 'Creating…'
+        : 'Working…'
+    : cloning
+      ? 'Clone & create'
+      : creating
+        ? 'Create repo & workspace'
+        : submitLabel
+
   return (
     <div className="modal-backdrop" onClick={busy ? undefined : onCancel}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h2 className="modal-title">{title}</h2>
 
-        {mode === 'workspace' && (
+        {mode === 'workspace' && allowGithubSource && (
+          <div className="field">
+            <span>Create from</span>
+            <div className="seg">
+              {(
+                [
+                  ['folder', 'Folder'],
+                  ['clone', 'Clone repo'],
+                  ['new', 'New GitHub repo']
+                ] as [WorkspaceSource, string][]
+              ).map(([v, label]) => (
+                <button
+                  key={v}
+                  className={source === v ? 'on' : ''}
+                  disabled={busy}
+                  onClick={() => setSource(v)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {cloning && (
           <label className="field">
-            <span>GitHub repo (optional)</span>
+            <span>GitHub repo</span>
             <input
               className="text-input mono"
               value={repoUrl}
@@ -128,9 +197,47 @@ export function LaunchDialog({
           </label>
         )}
 
+        {creating && (
+          <>
+            <label className="field">
+              <span>New repo name</span>
+              <input
+                className="text-input mono"
+                value={newName}
+                placeholder="my-project"
+                disabled={busy}
+                onChange={(e) => onNewName(e.target.value)}
+              />
+            </label>
+            <div className="field">
+              <span>Visibility</span>
+              <div className="seg">
+                <button className={isPrivate ? 'on' : ''} disabled={busy} onClick={() => setIsPrivate(true)}>
+                  🔒 Private
+                </button>
+                <button className={!isPrivate ? 'on' : ''} disabled={busy} onClick={() => setIsPrivate(false)}>
+                  🌐 Public
+                </button>
+              </div>
+            </div>
+            <label className="field">
+              <span className="muted-label">Description (optional)</span>
+              <input
+                className="text-input"
+                value={desc}
+                placeholder="What is this project?"
+                disabled={busy}
+                onChange={(e) => setDesc(e.target.value)}
+              />
+            </label>
+          </>
+        )}
+
         {mode === 'workspace' && (
           <label className="field">
-            <span>{cloning ? 'Clone into (new folder)' : 'Folder (optional)'}</span>
+            <span>
+              {cloning ? 'Clone into (new folder)' : creating ? 'Create in (parent folder)' : 'Folder (optional)'}
+            </span>
             <div className="field-row">
               <input
                 className="text-input mono"
@@ -138,7 +245,9 @@ export function LaunchDialog({
                 placeholder={
                   cloning
                     ? '~/repo — where to clone it'
-                    : '/path/to/project — leave blank to set up later'
+                    : creating
+                      ? '~ — the new folder goes here'
+                      : '/path/to/project — leave blank to set up later'
                 }
                 disabled={busy}
                 onChange={(e) => setPath(e.target.value)}
@@ -147,6 +256,11 @@ export function LaunchDialog({
                 Browse…
               </button>
             </div>
+            {creating && newName.trim() && (
+              <span className="muted-label mono">
+                → creates {(path.trim() || '~').replace(/\/$/, '')}/{newName.trim()}
+              </span>
+            )}
           </label>
         )}
 
@@ -156,6 +270,7 @@ export function LaunchDialog({
             className="text-input"
             value={name}
             placeholder={mode === 'workspace' ? 'My project' : 'Session'}
+            disabled={busy}
             onChange={(e) => setName(e.target.value)}
           />
         </label>
@@ -211,7 +326,7 @@ export function LaunchDialog({
             Cancel
           </button>
           <button className="btn primary" disabled={!canSubmit || busy} onClick={submit}>
-            {busy ? (cloning ? 'Cloning…' : 'Working…') : cloning ? 'Clone & create' : submitLabel}
+            {submitText}
           </button>
         </div>
       </div>

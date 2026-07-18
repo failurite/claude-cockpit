@@ -17,6 +17,37 @@ function gh(dir: string, args: string[], timeoutMs = 20000): Promise<{ stdout: s
   })
 }
 
+/** Trim gh's stderr/stdout/message into a short, user-readable line. */
+function errMsg(e: unknown): string {
+  const x = e as { stderr?: string; stdout?: string; message?: string }
+  return (x.stderr || x.stdout || x.message || String(e))
+    .toString()
+    .trim()
+    .split('\n')
+    .slice(0, 6)
+    .join('\n')
+}
+
+/**
+ * Create a new GitHub repo under the authenticated account and clone it into
+ * `parentDir/<name>`. Uses the user's existing gh auth (needs the `repo` scope).
+ * Returns a short message on success or failure for the dialog.
+ */
+export async function createRepo(
+  parentDir: string,
+  name: string,
+  opts: { private: boolean; description?: string }
+): Promise<{ ok: boolean; message: string }> {
+  const args = ['repo', 'create', name, opts.private ? '--private' : '--public', '--clone']
+  if (opts.description?.trim()) args.push('--description', opts.description.trim())
+  try {
+    const r = await gh(parentDir, args, 120000)
+    return { ok: true, message: (r.stderr || r.stdout).trim() || 'Created.' }
+  } catch (e) {
+    return { ok: false, message: errMsg(e) }
+  }
+}
+
 /** True if gh is installed and authenticated (issues UI hides itself otherwise). */
 export async function ghAvailable(dir: string): Promise<boolean> {
   try {

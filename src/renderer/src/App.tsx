@@ -226,6 +226,25 @@ export default function App(): JSX.Element {
     async (v: LaunchValues): Promise<string | null> => {
       if (!dialog) return null
       if (dialog.kind === 'workspace-new') {
+        if (v.source === 'new' && v.newRepo) {
+          // Create a brand-new GitHub repo, clone it, and point the workspace at it.
+          const res = await window.cockpit.workspaces.createRepo({
+            name: v.newRepo.name,
+            private: v.newRepo.private,
+            parentDir: v.path || undefined,
+            description: v.newRepo.description || undefined,
+            workspaceName: v.name || undefined,
+            defaults: v.options
+          })
+          if (!res.ok) return res.message ?? 'Repo creation failed.'
+          setWorkspaces(res.workspaces)
+          if (res.workspace) {
+            const s = await window.cockpit.createSession({ workspaceId: res.workspace.id })
+            setActiveId(s.id)
+          }
+          setDialog(null)
+          return null
+        }
         if (v.repoUrl) {
           // Clone a GitHub repo and point the new workspace at the checkout.
           const res = await window.cockpit.workspaces.createFromRepo({
@@ -466,6 +485,7 @@ export default function App(): JSX.Element {
           title={dialogProps.title}
           submitLabel={dialogProps.submit}
           initial={dialogProps.initial}
+          allowGithubSource={dialog?.kind === 'workspace-new'}
           onSubmit={submitDialog}
           onCancel={() => setDialog(null)}
         />

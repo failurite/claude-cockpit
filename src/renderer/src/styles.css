@@ -1088,6 +1088,38 @@ body.dragging-h .v-resizer {
   gap: 8px;
   align-items: center;
 }
+/* Segmented control (workspace source, repo visibility). */
+.seg {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  width: fit-content;
+}
+.seg button {
+  background: var(--bg);
+  border: none;
+  border-right: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.seg button:last-child {
+  border-right: none;
+}
+.seg button.on {
+  background: var(--accent);
+  color: #fff;
+}
+.seg button:not(.on):hover {
+  color: var(--text);
+}
+.seg button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
 .text-input {
   flex: 1;
   background: var(--bg);

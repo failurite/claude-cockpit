@@ -12,7 +12,8 @@ export function RepoRenameDialog({
   onCancel
 }: {
   ws: Workspace
-  onDone: () => void
+  /** Called with the new repo name after a successful rename. */
+  onDone: (newName: string) => void
   onCancel: () => void
 }): JSX.Element {
   const current = ws.path.split('/').filter(Boolean).pop() || ''
@@ -33,7 +34,7 @@ export function RepoRenameDialog({
       setBusy(false)
       return
     }
-    onDone()
+    onDone(trimmed)
   }
 
   return (
@@ -42,7 +43,8 @@ export function RepoRenameDialog({
         <h2 className="modal-title">Rename GitHub repo</h2>
         <p className="muted" style={{ marginTop: 0 }}>
           Renames the repo on GitHub and updates this checkout&rsquo;s <code>origin</code>. The
-          local folder and the workspace name (<strong>{ws.name}</strong>) are unchanged.
+          workspace label follows the new name; the local folder on disk (
+          <code>{current}</code>) keeps its path.
         </p>
         <label className="field">
           <span>New repo name</span>

@@ -27,6 +27,8 @@ import {
   devLaunchCommand,
   devSessionStartCommand,
   tmuxWrap,
+  tmuxHasSession,
+  tmuxSessionPaneId,
   killCockpitSession,
   listCockpitSessions,
   enableMouse,
@@ -314,6 +316,21 @@ export class SessionManager extends EventEmitter {
       }
     }
 
+    // Re-attaching a live tmux session? Then claude is already running (past its
+    // SessionStart hook), so no hook will move us off 'starting' until you
+    // interact. Start such panes at 'idle' (ready) — the next hook corrects it if
+    // it was actually mid-work. A fresh session stays 'starting' until SessionStart.
+    let reattaching = !!tmuxName && tmuxHasSession(tmuxName)
+
+    // Migration: a session created before the per-session `-e` env fix carries the
+    // wrong pane id (the server/dev pane's), so its hooks misreport and it never
+    // updates. Recreate it (conversation restored via --resume) so it gets correct
+    // env. The dev session is exempt — it started the server, so its env is right.
+    if (reattaching && tmuxName && kind !== 'dev' && tmuxSessionPaneId(tmuxName) !== tmuxName) {
+      killCockpitSession(tmuxName)
+      reattaching = false
+    }
+
     // Bump seq once per pane so "Session N" fallback names stay unique even for
     // tmux-backed panes (whose id is the tmux name, not `pane-N`).
     const seqNum = ++seq
@@ -352,17 +369,23 @@ export class SessionManager extends EventEmitter {
       tmuxSession: tmuxName,
       issue: opts?.issue ?? null,
       claudeSessionId: null,
-      status: 'starting',
+      status: reattaching ? 'idle' : 'starting',
       subagentCount: 0,
       tokensTotal: 0,
       model: null,
       usingChrome: false,
       chromeActivity: null,
-      lastActivity: 'launching',
+      lastActivity: reattaching ? 're-attached' : 'launching',
       updatedAt: Date.now()
     }
     const pane: Pane = { session, proc, buffer: '' }
     this.panes.set(id, pane)
+
+    // Re-attached (or --resume) sessions won't fire a hook until you interact —
+    // bind the transcript watch now (using the known conversation id) so the
+    // model / token / sub-agent readouts populate immediately instead of after
+    // the first prompt.
+    if (resumeId) this.bindClaudeSession(id, resumeId)
 
     // Scrolling fix: tmux without mouse mode turns trackpad wheel into arrow keys
     // for alt-screen apps. Set it once the session exists (retry covers first create).
@@ -392,10 +415,10 @@ export class SessionManager extends EventEmitter {
     tmuxName: string | null
   }): string {
     if (o.kind === 'dev' && o.tmuxName) {
-      // The dev session stays exactly as before: plain `claude <flags>` inside a
-      // fixed-name tmux session (no browser/cross-session MCP, no --resume — it
-      // relies on tmux persistence). Its drift check compares this same command.
-      return devLaunchCommand(o.cwd, claudeFlags(o.options))
+      // The dev session stays plain `claude <flags>` (no browser/cross-session MCP,
+      // no --resume — it relies on tmux persistence). Its drift check compares the
+      // inner command; the `-e` env args are tmux flags and don't affect it.
+      return devLaunchCommand(o.cwd, claudeFlags(o.options), this.paneEnv(o.tmuxName))
     }
     if (o.command !== 'claude') return o.command
     // Build `claude [prompt] <flags> [--resume <id>]`.
@@ -410,9 +433,10 @@ export class SessionManager extends EventEmitter {
     ]
     const inner = parts.join(' ')
     // A tmux-backed session wraps the command so it survives app restarts (the
-    // inner command runs on first create; re-attach ignores it). No tmux → run
-    // the command directly and rely on `--resume` across restarts.
-    return o.tmuxName ? tmuxWrap(o.tmuxName, o.cwd, inner) : inner
+    // inner command runs on first create; re-attach ignores it). The `-e` env
+    // (via paneEnv) makes each session's hooks report to its OWN pane. No tmux →
+    // run the command directly and rely on `--resume` across restarts.
+    return o.tmuxName ? tmuxWrap(o.tmuxName, o.cwd, inner, this.paneEnv(o.tmuxName)) : inner
   }
 
   /**
@@ -421,6 +445,25 @@ export class SessionManager extends EventEmitter {
    * `cmd.exe /c` on Windows) — see platform.ts. The pane-scoped env lets the hook
    * + MCP shims phone home to the right pane.
    */
+  /**
+   * The pane-scoped env the hook + MCP shims read to phone home to the right pane.
+   * Used both for the pty's env AND (crucially) as tmux `-e` args — a tmux session
+   * on an existing server otherwise inherits the server's (dev pane's) env.
+   */
+  private paneEnv(id: string): Record<string, string> {
+    return {
+      CLAUDE_COCKPIT: '1',
+      CLAUDE_COCKPIT_PANE_ID: id,
+      CLAUDE_COCKPIT_INGEST_PORT: String(this.ingestPort),
+      // The cockpit-browser MCP shim (spawned by claude) reaches the app's browser
+      // RPC endpoint via this, scoped to this pane.
+      CLAUDE_COCKPIT_BROWSER_PORT: String(this.browser.port),
+      // The cockpit-sessions MCP shim reaches the cross-session RPC endpoint
+      // (list/read sibling sessions) via this, scoped to this pane.
+      CLAUDE_COCKPIT_SESSIONS_PORT: String(this.sessions.port)
+    }
+  }
+
   private spawnPty(id: string, cwd: string, launch: string): IPty {
     const { shell, args } = buildShellInvocation(launch)
     return pty.spawn(shell, args, {
@@ -428,18 +471,7 @@ export class SessionManager extends EventEmitter {
       cols: 80,
       rows: 24,
       cwd,
-      env: {
-        ...process.env,
-        CLAUDE_COCKPIT: '1',
-        CLAUDE_COCKPIT_PANE_ID: id,
-        CLAUDE_COCKPIT_INGEST_PORT: String(this.ingestPort),
-        // The cockpit-browser MCP shim (spawned by claude) inherits this to reach
-        // the app's browser RPC endpoint, scoped to this pane.
-        CLAUDE_COCKPIT_BROWSER_PORT: String(this.browser.port),
-        // The cockpit-sessions MCP shim inherits this to reach the app's
-        // cross-session RPC endpoint (list/read sibling sessions), scoped to this pane.
-        CLAUDE_COCKPIT_SESSIONS_PORT: String(this.sessions.port)
-      } as Record<string, string>
+      env: { ...process.env, ...this.paneEnv(id) } as Record<string, string>
     })
   }
 

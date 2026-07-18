@@ -40,9 +40,12 @@ export function sq(s: string): string {
  * the tmux *server* outlives cockpit, claude survives app restarts; we just re-attach.
  * NB: flags only apply when the session is first created — re-attach ignores them.
  */
-export function devLaunchCommand(cwd: string, claudeArgs: string[] = []): string {
-  const cmd = ['claude', ...claudeArgs].join(' ').trim()
-  return `tmux new-session -A -s ${DEV_TMUX_NAME} -c ${sq(cwd)} ${cmd}`
+export function devLaunchCommand(
+  cwd: string,
+  claudeArgs: string[] = [],
+  env: Record<string, string> = {}
+): string {
+  return tmuxWrap(DEV_TMUX_NAME, cwd, ['claude', ...claudeArgs].join(' ').trim(), env)
 }
 
 /**
@@ -51,9 +54,56 @@ export function devLaunchCommand(cwd: string, claudeArgs: string[] = []): string
  * inner process survives app restarts; on the next launch we just re-attach and
  * the inner command (flags, --resume, prompt) is ignored. This is the generic
  * form of `devLaunchCommand`, used to back every claude session (not just dev).
+ *
+ * `env` entries become `-e KEY=VALUE` — CRITICAL for correctness: a tmux session
+ * created on an already-running server does NOT inherit the client's environment,
+ * it gets the server's (i.e. the first/dev session's `CLAUDE_COCKPIT_PANE_ID`).
+ * Passing the per-pane vars via `-e` overrides that so each session's hooks report
+ * to the right pane. Ignored on re-attach (the running process keeps its env).
  */
-export function tmuxWrap(name: string, cwd: string, innerCmd: string): string {
-  return `tmux new-session -A -s ${name} -c ${sq(cwd)} ${innerCmd}`
+export function tmuxWrap(
+  name: string,
+  cwd: string,
+  innerCmd: string,
+  env: Record<string, string> = {}
+): string {
+  const envArgs = Object.entries(env)
+    .map(([k, v]) => `-e ${sq(`${k}=${v}`)}`)
+    .join(' ')
+  return `tmux new-session -A -s ${name} -c ${sq(cwd)}${envArgs ? ` ${envArgs}` : ''} ${innerCmd}`
+}
+
+/** True if a cockpit tmux session with this name is currently live (re-attach case). */
+export function tmuxHasSession(name: string): boolean {
+  const bin = tmuxBin()
+  if (!bin || !name.startsWith(TMUX_PREFIX)) return false
+  try {
+    execFileSync(bin, ['has-session', '-t', name], { stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The `CLAUDE_COCKPIT_PANE_ID` recorded in a live session's environment, or null
+ * if unset. Used to detect sessions created before the per-session `-e` env fix
+ * (they carry the server/dev pane id, so their hooks misreport) and recreate them.
+ */
+export function tmuxSessionPaneId(name: string): string | null {
+  const bin = tmuxBin()
+  if (!bin || !name.startsWith(TMUX_PREFIX)) return null
+  try {
+    const out = execFileSync(
+      bin,
+      ['show-environment', '-t', name, 'CLAUDE_COCKPIT_PANE_ID'],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }
+    ).trim()
+    const m = out.match(/^CLAUDE_COCKPIT_PANE_ID=(.*)$/)
+    return m ? m[1] : null
+  } catch {
+    return null // unset (`-VAR`), unknown variable, or no such session
+  }
 }
 
 /**

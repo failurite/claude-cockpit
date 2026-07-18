@@ -43,6 +43,8 @@ interface Props {
   onEditWorkspace: (ws: Workspace) => void
   /** Rename a workspace in place (double-click its name). */
   onRenameWorkspace: (id: string, name: string) => void
+  /** Rename the workspace's GitHub repo (gh repo rename). */
+  onRenameRepo: (ws: Workspace) => void
   onDeleteWorkspace: (id: string) => void
   /** Start (or focus) the dedicated session for a GitHub issue. */
   onStartIssue: (workspaceId: string, number: number) => void
@@ -76,6 +78,7 @@ export function Sidebar({
   onNewWorkspace,
   onEditWorkspace,
   onRenameWorkspace,
+  onRenameRepo,
   onDeleteWorkspace,
   onStartIssue,
   issuesRefreshKey,
@@ -321,6 +324,16 @@ export function Sidebar({
                             >
                               Edit workspace…
                             </button>
+                            {ws.path && (
+                              <button
+                                onClick={() => {
+                                  setMenuFor(null)
+                                  onRenameRepo(ws)
+                                }}
+                              >
+                                Rename GitHub repo…
+                              </button>
+                            )}
                             <button
                               className="danger"
                               onClick={() => {

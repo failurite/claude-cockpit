@@ -11,6 +11,7 @@ import { Sidebar } from './components/Sidebar'
 import { TerminalView } from './components/TerminalView'
 import { BrowserPanel } from './components/BrowserPanel'
 import { LaunchDialog, type LaunchValues } from './components/LaunchDialog'
+import { RepoRenameDialog } from './components/RepoRenameDialog'
 import { SettingsPanel } from './components/SettingsPanel'
 
 /** Short, footer-friendly model label: `claude-opus-4-8[1m]` → `opus-4-8[1m]`; null → `…`. */
@@ -33,6 +34,8 @@ export default function App(): JSX.Element {
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null)
   const [dialog, setDialog] = useState<Dialog | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  // Workspace whose GitHub repo is being renamed (null = dialog closed).
+  const [renameRepoWs, setRenameRepoWs] = useState<Workspace | null>(null)
   // Archived (closed-but-saved) sessions, reopenable on demand.
   const [archived, setArchived] = useState<ArchivedSessionInfo[]>([])
   // Which panes currently show their embedded browser (auto-opens on first tab).
@@ -128,8 +131,10 @@ export default function App(): JSX.Element {
   // everything — but the embedded browser is a native overlay that always paints
   // over renderer HTML. Force it hidden while any modal is open.
   useEffect(() => {
-    window.cockpit.browser.setOverlaySuppressed(!!dialog || settingsOpen || updatePrompt)
-  }, [dialog, settingsOpen, updatePrompt])
+    window.cockpit.browser.setOverlaySuppressed(
+      !!dialog || settingsOpen || updatePrompt || !!renameRepoWs
+    )
+  }, [dialog, settingsOpen, updatePrompt, renameRepoWs])
 
   // Auto-reveal a pane's browser the moment the agent opens its first tab.
   useEffect(() => {
@@ -360,6 +365,7 @@ export default function App(): JSX.Element {
             onNewWorkspace={() => setDialog({ kind: 'workspace-new' })}
             onEditWorkspace={(ws) => setDialog({ kind: 'workspace-edit', ws })}
             onRenameWorkspace={renameWorkspace}
+            onRenameRepo={(ws) => setRenameRepoWs(ws)}
             onDeleteWorkspace={deleteWorkspace}
             onStartIssue={startIssue}
             issuesRefreshKey={issuesRefreshKey}
@@ -488,6 +494,17 @@ export default function App(): JSX.Element {
           allowGithubSource={dialog?.kind === 'workspace-new'}
           onSubmit={submitDialog}
           onCancel={() => setDialog(null)}
+        />
+      )}
+      {renameRepoWs && (
+        <RepoRenameDialog
+          ws={renameRepoWs}
+          onDone={() => {
+            setRenameRepoWs(null)
+            // The remote URL changed; nudge the workspace list so WorkspaceGit re-reads.
+            window.cockpit.workspaces.list().then(setWorkspaces)
+          }}
+          onCancel={() => setRenameRepoWs(null)}
         />
       )}
       {settingsOpen && (

@@ -48,6 +48,23 @@ export async function createRepo(
   }
 }
 
+/**
+ * Rename the GitHub repo of the checkout at `dir` (renames on GitHub and updates
+ * this checkout's `origin`). The local folder + Cockpit workspace name are left
+ * as-is. Needs gh auth with push access to the repo.
+ */
+export async function renameRepo(
+  dir: string,
+  newName: string
+): Promise<{ ok: boolean; message: string }> {
+  try {
+    const r = await gh(dir, ['repo', 'rename', newName, '--yes'], 30000)
+    return { ok: true, message: (r.stdout || r.stderr).trim() || 'Renamed.' }
+  } catch (e) {
+    return { ok: false, message: errMsg(e) }
+  }
+}
+
 /** True if gh is installed and authenticated (issues UI hides itself otherwise). */
 export async function ghAvailable(dir: string): Promise<boolean> {
   try {

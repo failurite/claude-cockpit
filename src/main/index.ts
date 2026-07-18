@@ -13,7 +13,7 @@ import { BrowserManager } from './browser.js'
 import { startBrowserRpc, type BrowserRpcServer } from './browser-rpc.js'
 import { startSessionsRpc, type SessionsRpcServer } from './sessions-rpc.js'
 import { gitStatus, gitPush, gitPull, gitClone } from './git.js'
-import { ghAvailable, listIssues, viewIssue, closeIssue, createRepo } from './issues.js'
+import { ghAvailable, listIssues, viewIssue, closeIssue, createRepo, renameRepo } from './issues.js'
 import { createIssueWorktree, finishIssueWorktree } from './worktrees.js'
 import type { IssueDoneResult, IssueRef } from '../shared/types.js'
 import { initStore, getFlag, setFlag, getWorkspaces, saveWorkspaces } from './store.js'
@@ -358,6 +358,9 @@ async function bootstrap(): Promise<void> {
   ipcMain.handle('workspaces:save', (_e, ws: Workspace) => upsertWorkspace(ws))
   ipcMain.handle('workspaces:clone', (_e, opts) => cloneWorkspace(opts))
   ipcMain.handle('workspaces:create-repo', (_e, opts) => createRepoWorkspace(opts))
+  ipcMain.handle('workspaces:rename-repo', (_e, dir: string, newName: string) =>
+    renameRepo(expandTilde(dir), newName)
+  )
   ipcMain.handle('workspaces:remove', (_e, id: string) => removeWorkspace(id))
 
   // Auto-update wiring (no-op outside a packaged build).

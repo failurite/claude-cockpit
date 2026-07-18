@@ -297,6 +297,12 @@ export interface CockpitApi {
       workspaceName?: string
       defaults: SessionOptions
     }): Promise<{ ok: boolean; message?: string; workspaces: Workspace[]; workspace?: Workspace }>
+    /**
+     * Rename the GitHub repo of the checkout at `dir` via `gh repo rename`
+     * (renames on GitHub + updates this checkout's `origin`; the local folder and
+     * workspace name are unchanged). `ok:false` + message on failure.
+     */
+    renameRepo(dir: string, newName: string): Promise<{ ok: boolean; message: string }>
     /** Remove a workspace by id; returns the remaining list. */
     remove(id: string): Promise<Workspace[]>
   }

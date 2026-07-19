@@ -309,9 +309,13 @@ export interface CockpitApi {
       newName: string,
       renameFolder: boolean
     ): Promise<{ ok: boolean; message?: string; workspaces: Workspace[] }>
+    /** Reorder user workspaces to match the given id order; returns the full list. */
+    reorder(orderedIds: string[]): Promise<Workspace[]>
     /** Remove a workspace by id; returns the remaining list. */
     remove(id: string): Promise<Workspace[]>
   }
+  /** Reorder a workspace's sessions (its session ids in the new order). */
+  reorderSessions(orderedIds: string[]): void
   closeSession(id: string): Promise<void>
   /**
    * Relaunch a session's claude process in place (same pane + position),

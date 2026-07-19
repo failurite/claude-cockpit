@@ -364,6 +364,8 @@ async function bootstrap(): Promise<void> {
       renameRepoWorkspace(workspaceId, newName, renameFolder)
   )
   ipcMain.handle('workspaces:remove', (_e, id: string) => removeWorkspace(id))
+  ipcMain.handle('workspaces:reorder', (_e, orderedIds: string[]) => reorderWorkspaces(orderedIds))
+  ipcMain.on('sessions:reorder', (_e, orderedIds: string[]) => manager.reorderSessions(orderedIds))
 
   // Auto-update wiring (no-op outside a packaged build).
   initUpdater(() => mainWindow)
@@ -767,6 +769,22 @@ async function renameRepoWorkspace(
   }
 
   return { ok: true, workspaces: upsertWorkspace(updated) }
+}
+
+/** Reorder stored (user) workspaces to match `orderedIds`; unknown/missing keep their tail order. */
+function reorderWorkspaces(orderedIds: string[]): Workspace[] {
+  const byId = new Map(getWorkspaces().map((w) => [w.id, w]))
+  const next: Workspace[] = []
+  for (const id of orderedIds) {
+    const w = byId.get(id)
+    if (w) {
+      next.push(w)
+      byId.delete(id)
+    }
+  }
+  for (const w of byId.values()) next.push(w) // any not listed → keep, at the end
+  saveWorkspaces(next)
+  return listAllWorkspaces()
 }
 
 /** Remove a workspace by id; returns the remaining list. (Hide Cockpit via Settings instead.) */

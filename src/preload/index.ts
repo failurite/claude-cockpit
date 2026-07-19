@@ -47,6 +47,7 @@ const api: CockpitApi = {
   createSession: (opts) => ipcRenderer.invoke('sessions:create', opts),
   createDevSession: () => ipcRenderer.invoke('sessions:create-dev'),
   closeSession: (id) => ipcRenderer.invoke('sessions:close', id),
+  reorderSessions: (orderedIds) => ipcRenderer.send('sessions:reorder', orderedIds),
   restartSession: (id) => ipcRenderer.invoke('sessions:restart', id),
   closeAllSessions: () => ipcRenderer.invoke('sessions:close-all'),
   renameSession: (id, name) => ipcRenderer.invoke('sessions:rename', id, name),
@@ -95,6 +96,7 @@ const api: CockpitApi = {
     createRepo: (opts) => ipcRenderer.invoke('workspaces:create-repo', opts),
     renameRepo: (workspaceId, newName, renameFolder) =>
       ipcRenderer.invoke('workspaces:rename-repo', workspaceId, newName, renameFolder),
+    reorder: (orderedIds) => ipcRenderer.invoke('workspaces:reorder', orderedIds),
     remove: (id) => ipcRenderer.invoke('workspaces:remove', id)
   },
   appInfo: () => ipcRenderer.invoke('app:info'),

@@ -773,6 +773,36 @@ export class SessionManager extends EventEmitter {
     }
   }
 
+  /**
+   * Reorder a subset of panes (e.g. one workspace's sessions) to the given
+   * relative order, leaving all other panes in place. The block lands at the
+   * position of its first member. Persisted, so restore keeps the order. Since
+   * the renderer groups sessions by workspace (a stable filter), only the subset's
+   * relative order matters for display.
+   */
+  reorderSessions(orderedIds: string[]): void {
+    const set = new Set(orderedIds)
+    const ordered = orderedIds
+      .map((id) => this.panes.get(id))
+      .filter((p): p is Pane => !!p)
+    if (ordered.length < 2) return
+    const next = new Map<string, Pane>()
+    let inserted = false
+    for (const [id, p] of this.panes) {
+      if (set.has(id)) {
+        if (!inserted) {
+          for (const op of ordered) next.set(op.session.id, op)
+          inserted = true
+        }
+      } else {
+        next.set(id, p)
+      }
+    }
+    this.panes = next
+    this.emitSessions()
+    this.persist()
+  }
+
   /** Cumulative tokens across all live sessions' conversations (for the load meter). */
   totalTokens(): number {
     let sum = 0

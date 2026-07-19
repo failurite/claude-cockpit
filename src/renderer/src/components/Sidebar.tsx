@@ -46,6 +46,10 @@ interface Props {
   /** Rename the workspace's GitHub repo (gh repo rename). */
   onRenameRepo: (ws: Workspace) => void
   onDeleteWorkspace: (id: string) => void
+  /** Drag-reorder user workspaces (ids in the new order). */
+  onReorderWorkspaces: (orderedIds: string[]) => void
+  /** Drag-reorder a workspace's sessions (that workspace's session ids in the new order). */
+  onReorderSessions: (orderedIds: string[]) => void
   /** Start (or focus) the dedicated session for a GitHub issue. */
   onStartIssue: (workspaceId: string, number: number) => void
   /** Incremented after a Done merge so each open Issues list re-fetches. */
@@ -80,6 +84,8 @@ export function Sidebar({
   onRenameWorkspace,
   onRenameRepo,
   onDeleteWorkspace,
+  onReorderWorkspaces,
+  onReorderSessions,
   onStartIssue,
   issuesRefreshKey,
   onOpenSettings,
@@ -97,6 +103,36 @@ export function Sidebar({
   const [wsDraft, setWsDraft] = useState('')
   // Right-click context menu on a session: the session + where to draw the menu.
   const [ctxMenu, setCtxMenu] = useState<{ s: TerminalSession; x: number; y: number } | null>(null)
+  // Drag-to-reorder state: what's being dragged + which row it's hovering over.
+  const [drag, setDrag] = useState<
+    | { kind: 'ws'; id: string }
+    | { kind: 'session'; id: string; workspaceId: string | null }
+    | null
+  >(null)
+  const [dropId, setDropId] = useState<string | null>(null)
+
+  const endDrag = (): void => {
+    setDrag(null)
+    setDropId(null)
+  }
+  /** Move `draggedId` to just before `targetId` within `ids`; returns the new order. */
+  const moved = (ids: string[], draggedId: string, targetId: string): string[] => {
+    const next = ids.filter((id) => id !== draggedId)
+    const ti = next.indexOf(targetId)
+    next.splice(ti < 0 ? next.length : ti, 0, draggedId)
+    return next
+  }
+  const dropWorkspace = (targetId: string): void => {
+    if (drag?.kind !== 'ws' || drag.id === targetId || targetId === COCKPIT_WORKSPACE_ID) return
+    const ids = workspaces.filter((w) => w.id !== COCKPIT_WORKSPACE_ID).map((w) => w.id)
+    onReorderWorkspaces(moved(ids, drag.id, targetId))
+  }
+  const dropSession = (target: TerminalSession): void => {
+    if (drag?.kind !== 'session' || drag.id === target.id || drag.workspaceId !== target.workspaceId)
+      return
+    const ids = sessions.filter((s) => s.workspaceId === target.workspaceId).map((s) => s.id)
+    onReorderSessions(moved(ids, drag.id, target.id))
+  }
 
   const startEdit = (s: TerminalSession): void => {
     setEditingId(s.id)
@@ -136,16 +172,47 @@ export function Sidebar({
   const ungrouped = sessions.filter((s) => !workspaces.some((w) => w.id === s.workspaceId))
   const archivedUngrouped = archived.filter((a) => !workspaces.some((w) => w.id === a.workspaceId))
 
-  const renderItem = (s: TerminalSession): JSX.Element => (
+  const renderItem = (s: TerminalSession): JSX.Element => {
+    const isDropTarget =
+      drag?.kind === 'session' && drag.id !== s.id && drag.workspaceId === s.workspaceId && dropId === s.id
+    return (
     <li
       key={s.id}
-      className={`session-item ${s.id === activeId ? 'active' : ''}`}
+      className={`session-item ${s.id === activeId ? 'active' : ''} ${isDropTarget ? 'drop-target' : ''} ${
+        drag?.kind === 'session' && drag.id === s.id ? 'dragging' : ''
+      }`}
       onClick={() => onSelect(s.id)}
       onContextMenu={(e) => {
         e.preventDefault()
         setCtxMenu({ s, x: e.clientX, y: e.clientY })
       }}
+      onDragOver={(e) => {
+        if (drag?.kind === 'session' && drag.id !== s.id && drag.workspaceId === s.workspaceId) {
+          e.preventDefault()
+          setDropId(s.id)
+        }
+      }}
+      onDragLeave={() => setDropId((d) => (d === s.id ? null : d))}
+      onDrop={(e) => {
+        e.preventDefault()
+        dropSession(s)
+        endDrag()
+      }}
     >
+      <span
+        className="drag-grip"
+        draggable
+        title="Drag to reorder"
+        onClick={(e) => e.stopPropagation()}
+        onDragStart={(e) => {
+          setDrag({ kind: 'session', id: s.id, workspaceId: s.workspaceId })
+          e.dataTransfer.effectAllowed = 'move'
+          e.dataTransfer.setData('text/plain', s.id)
+        }}
+        onDragEnd={endDrag}
+      >
+        ⠿
+      </span>
       <span className={`dot ${s.status}`} title={s.status} />
       <div className="session-main">
         {editingId === s.id ? (
@@ -214,7 +281,8 @@ export function Sidebar({
         ×
       </button>
     </li>
-  )
+    )
+  }
 
   return (
     <aside className="sidebar" style={{ width, minWidth: width }}>
@@ -248,9 +316,46 @@ export function Sidebar({
         {workspaces.map((ws) => {
           const items = sessions.filter((s) => s.workspaceId === ws.id)
           const isCollapsed = collapsed.has(ws.id)
+          const canDragWs = ws.id !== COCKPIT_WORKSPACE_ID
+          const wsDropTarget =
+            drag?.kind === 'ws' && drag.id !== ws.id && canDragWs && dropId === ws.id
           return (
-            <div className="ws-group" key={ws.id}>
+            <div
+              className={`ws-group ${wsDropTarget ? 'drop-target' : ''} ${
+                drag?.kind === 'ws' && drag.id === ws.id ? 'dragging' : ''
+              }`}
+              key={ws.id}
+              onDragOver={(e) => {
+                if (drag?.kind === 'ws' && drag.id !== ws.id && canDragWs) {
+                  e.preventDefault()
+                  setDropId(ws.id)
+                }
+              }}
+              onDragLeave={() => setDropId((d) => (d === ws.id ? null : d))}
+              onDrop={(e) => {
+                if (drag?.kind === 'ws') {
+                  e.preventDefault()
+                  dropWorkspace(ws.id)
+                }
+                endDrag()
+              }}
+            >
               <div className="ws-header">
+                {canDragWs && (
+                  <span
+                    className="drag-grip"
+                    draggable
+                    title="Drag to reorder"
+                    onDragStart={(e) => {
+                      setDrag({ kind: 'ws', id: ws.id })
+                      e.dataTransfer.effectAllowed = 'move'
+                      e.dataTransfer.setData('text/plain', ws.id)
+                    }}
+                    onDragEnd={endDrag}
+                  >
+                    ⠿
+                  </span>
+                )}
                 <button className="ws-chevron" onClick={() => toggleCollapse(ws.id)}>
                   {isCollapsed ? '▸' : '▾'}
                 </button>

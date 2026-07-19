@@ -14,6 +14,28 @@ import { LaunchDialog, type LaunchValues } from './components/LaunchDialog'
 import { RepoRenameDialog } from './components/RepoRenameDialog'
 import { SettingsPanel } from './components/SettingsPanel'
 
+/**
+ * Reorder a subset of a list to `orderedIds`' relative order, leaving other items
+ * in place (block lands at its first member). Mirrors SessionManager.reorderSessions
+ * so the optimistic UI matches what main persists.
+ */
+function reorderSubset<T extends { id: string }>(list: T[], orderedIds: string[]): T[] {
+  const set = new Set(orderedIds)
+  const byId = new Map(list.map((x) => [x.id, x]))
+  const ordered = orderedIds.map((id) => byId.get(id)).filter((x): x is T => !!x)
+  const out: T[] = []
+  let inserted = false
+  for (const x of list) {
+    if (set.has(x.id)) {
+      if (!inserted) {
+        out.push(...ordered)
+        inserted = true
+      }
+    } else out.push(x)
+  }
+  return out
+}
+
 /** Short, footer-friendly model label: `claude-opus-4-8[1m]` → `opus-4-8[1m]`; null → `…`. */
 function shortModel(model: string | null): string {
   if (!model) return '…'
@@ -213,6 +235,16 @@ export default function App(): JSX.Element {
     setWorkspaces(await window.cockpit.workspaces.remove(id))
   }, [])
 
+  // Drag-reorder: workspaces (optimistic, then persist) and a workspace's sessions.
+  const reorderWorkspaces = useCallback(async (orderedIds: string[]) => {
+    setWorkspaces((prev) => reorderSubset(prev, orderedIds))
+    setWorkspaces(await window.cockpit.workspaces.reorder(orderedIds))
+  }, [])
+  const reorderSessions = useCallback((orderedIds: string[]) => {
+    setSessions((prev) => reorderSubset(prev, orderedIds))
+    window.cockpit.reorderSessions(orderedIds)
+  }, [])
+
   // Inline rename (double-click the workspace name) — saves the workspace with a
   // new name, leaving its folder + defaults untouched.
   const renameWorkspace = useCallback(
@@ -367,6 +399,8 @@ export default function App(): JSX.Element {
             onRenameWorkspace={renameWorkspace}
             onRenameRepo={(ws) => setRenameRepoWs(ws)}
             onDeleteWorkspace={deleteWorkspace}
+            onReorderWorkspaces={reorderWorkspaces}
+            onReorderSessions={reorderSessions}
             onStartIssue={startIssue}
             issuesRefreshKey={issuesRefreshKey}
             onOpenSettings={() => setSettingsOpen(true)}

@@ -48,7 +48,10 @@ function rpc(method, params) {
 const TOOLS = [
   {
     name: 'browser_open_tab',
-    description: "Open a new tab in this session's embedded browser (optionally at a URL) and make it active.",
+    description:
+      "Open a URL in THIS session's embedded, in-app browser (a new tab, made active). " +
+      'Use this for web browsing instead of an external/system browser — never shell out ' +
+      'to `open`/`xdg-open`/`start`.',
     inputSchema: {
       type: 'object',
       properties: { url: { type: 'string', description: 'URL to open (default about:blank)' } }
@@ -56,7 +59,9 @@ const TOOLS = [
   },
   {
     name: 'browser_navigate',
-    description: 'Navigate a tab (defaults to the active tab) to a URL.',
+    description:
+      "Navigate a tab (defaults to the active tab) to a URL in this session's embedded, " +
+      'in-app browser. Prefer this over opening an external/system browser.',
     inputSchema: {
       type: 'object',
       properties: {

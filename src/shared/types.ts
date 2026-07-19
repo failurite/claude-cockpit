@@ -298,11 +298,17 @@ export interface CockpitApi {
       defaults: SessionOptions
     }): Promise<{ ok: boolean; message?: string; workspaces: Workspace[]; workspace?: Workspace }>
     /**
-     * Rename the GitHub repo of the checkout at `dir` via `gh repo rename`
-     * (renames on GitHub + updates this checkout's `origin`; the local folder and
-     * workspace name are unchanged). `ok:false` + message on failure.
+     * Rename a workspace's GitHub repo via `gh repo rename` (renames on GitHub +
+     * updates its `origin`), following the workspace label when it was the default.
+     * When `renameFolder` is true, also move the local folder to match and re-point
+     * the workspace + its live sessions. Returns the updated list (always) and
+     * `ok:false` + message on failure.
      */
-    renameRepo(dir: string, newName: string): Promise<{ ok: boolean; message: string }>
+    renameRepo(
+      workspaceId: string,
+      newName: string,
+      renameFolder: boolean
+    ): Promise<{ ok: boolean; message?: string; workspaces: Workspace[] }>
     /** Remove a workspace by id; returns the remaining list. */
     remove(id: string): Promise<Workspace[]>
   }

@@ -93,7 +93,8 @@ const api: CockpitApi = {
     save: (ws) => ipcRenderer.invoke('workspaces:save', ws),
     createFromRepo: (opts) => ipcRenderer.invoke('workspaces:clone', opts),
     createRepo: (opts) => ipcRenderer.invoke('workspaces:create-repo', opts),
-    renameRepo: (dir, newName) => ipcRenderer.invoke('workspaces:rename-repo', dir, newName),
+    renameRepo: (workspaceId, newName, renameFolder) =>
+      ipcRenderer.invoke('workspaces:rename-repo', workspaceId, newName, renameFolder),
     remove: (id) => ipcRenderer.invoke('workspaces:remove', id)
   },
   appInfo: () => ipcRenderer.invoke('app:info'),

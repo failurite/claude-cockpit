@@ -499,20 +499,8 @@ export default function App(): JSX.Element {
       {renameRepoWs && (
         <RepoRenameDialog
           ws={renameRepoWs}
-          onDone={async (newName) => {
-            const ws = renameRepoWs
-            setRenameRepoWs(null)
-            // Follow the new repo name in the sidebar — but only if the label was
-            // the default one derived from the old repo/folder name; keep a name
-            // the user customised. Either way, re-read git so origin refreshes.
-            const oldBase = ws.path.split('/').filter(Boolean).pop() || ''
-            if (ws.name === oldBase && newName !== ws.name) {
-              setWorkspaces(await window.cockpit.workspaces.save({ ...ws, name: newName }))
-            } else {
-              window.cockpit.workspaces.list().then(setWorkspaces)
-            }
-          }}
-          onCancel={() => setRenameRepoWs(null)}
+          onResult={setWorkspaces}
+          onClose={() => setRenameRepoWs(null)}
         />
       )}
       {settingsOpen && (

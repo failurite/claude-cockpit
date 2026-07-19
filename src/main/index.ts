@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, dialog, nativeImage, shell } from 'electron'
-import { join, dirname } from 'path'
+import { join, dirname, basename } from 'path'
 import { fileURLToPath } from 'url'
-import { existsSync, mkdirSync } from 'fs'
+import { existsSync, mkdirSync, renameSync } from 'fs'
 import { homedir } from 'os'
 import { randomUUID } from 'crypto'
 import { spawn } from 'child_process'
@@ -358,8 +358,10 @@ async function bootstrap(): Promise<void> {
   ipcMain.handle('workspaces:save', (_e, ws: Workspace) => upsertWorkspace(ws))
   ipcMain.handle('workspaces:clone', (_e, opts) => cloneWorkspace(opts))
   ipcMain.handle('workspaces:create-repo', (_e, opts) => createRepoWorkspace(opts))
-  ipcMain.handle('workspaces:rename-repo', (_e, dir: string, newName: string) =>
-    renameRepo(expandTilde(dir), newName)
+  ipcMain.handle(
+    'workspaces:rename-repo',
+    (_e, workspaceId: string, newName: string, renameFolder: boolean) =>
+      renameRepoWorkspace(workspaceId, newName, renameFolder)
   )
   ipcMain.handle('workspaces:remove', (_e, id: string) => removeWorkspace(id))
 
@@ -704,6 +706,67 @@ async function createRepoWorkspace(opts: {
     defaults: opts.defaults
   }
   return { ok: true, workspaces: upsertWorkspace(ws), workspace: ws }
+}
+
+/**
+ * Rename a workspace's GitHub repo (`gh repo rename`), then optionally rename the
+ * local folder to match and re-point the workspace + its live sessions. Follows
+ * the workspace label when it was the default (old repo/folder name). Returns the
+ * updated list (always) plus `ok:false` + message on failure. Partial state is
+ * possible (repo renamed but folder move failed) — the message says so.
+ */
+async function renameRepoWorkspace(
+  workspaceId: string,
+  newName: string,
+  renameFolder: boolean
+): Promise<{ ok: boolean; message?: string; workspaces: Workspace[] }> {
+  const ws = getWorkspaces().find((w) => w.id === workspaceId)
+  if (!ws || !ws.path) {
+    return { ok: false, message: 'This workspace has no repo folder.', workspaces: listAllWorkspaces() }
+  }
+  if (!/^[\w.-]+$/.test(newName)) {
+    return {
+      ok: false,
+      message: 'Repo name can only contain letters, numbers, and - . _',
+      workspaces: listAllWorkspaces()
+    }
+  }
+  const oldPath = expandTilde(ws.path)
+  const oldBase = basename(oldPath)
+
+  const r = await renameRepo(oldPath, newName)
+  if (!r.ok) return { ok: false, message: r.message, workspaces: listAllWorkspaces() }
+
+  // Follow the label if it wasn't customised away from the old repo/folder name.
+  let updated: Workspace = ws.name === oldBase ? { ...ws, name: newName } : { ...ws }
+
+  if (renameFolder && oldBase !== newName) {
+    const newPath = join(dirname(oldPath), newName)
+    if (existsSync(newPath)) {
+      upsertWorkspace(updated)
+      return {
+        ok: false,
+        message: `Repo renamed on GitHub, but a folder named "${newName}" already exists — left the folder as-is.`,
+        workspaces: listAllWorkspaces()
+      }
+    }
+    try {
+      // rename(2): safe even with sessions' cwd inside — the running processes keep
+      // their cwd via the moved inode (POSIX). We just re-point the recorded paths.
+      renameSync(oldPath, newPath)
+    } catch (e) {
+      upsertWorkspace(updated)
+      return {
+        ok: false,
+        message: `Repo renamed on GitHub, but the folder couldn't be moved: ${(e as Error).message}`,
+        workspaces: listAllWorkspaces()
+      }
+    }
+    updated = { ...updated, path: newPath }
+    manager.repointCwd(oldPath, newPath)
+  }
+
+  return { ok: true, workspaces: upsertWorkspace(updated) }
 }
 
 /** Remove a workspace by id; returns the remaining list. (Hide Cockpit via Settings instead.) */

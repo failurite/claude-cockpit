@@ -749,6 +749,30 @@ export class SessionManager extends EventEmitter {
     this.sendPrompt(paneId, `/model ${a}`)
   }
 
+  /**
+   * Re-point live panes' recorded cwd after a workspace folder is moved on disk
+   * (`oldPath` → `newPath`). On POSIX the running processes keep their cwd via the
+   * moved inode, so nothing is restarted — we only fix the persisted cwd so a
+   * later respawn/restore spawns in the new location.
+   */
+  repointCwd(oldPath: string, newPath: string): void {
+    let changed = false
+    for (const p of this.panes.values()) {
+      const c = p.session.cwd
+      if (c === oldPath) {
+        p.session.cwd = newPath
+        changed = true
+      } else if (c.startsWith(oldPath + '/')) {
+        p.session.cwd = newPath + c.slice(oldPath.length)
+        changed = true
+      }
+    }
+    if (changed) {
+      this.emitSessions()
+      this.persist()
+    }
+  }
+
   /** Cumulative tokens across all live sessions' conversations (for the load meter). */
   totalTokens(): number {
     let sum = 0

@@ -424,6 +424,14 @@ export function Sidebar({
                             <button
                               onClick={() => {
                                 setMenuFor(null)
+                                startWsEdit(ws)
+                              }}
+                            >
+                              Rename in Cockpit…
+                            </button>
+                            <button
+                              onClick={() => {
+                                setMenuFor(null)
                                 onEditWorkspace(ws)
                               }}
                             >

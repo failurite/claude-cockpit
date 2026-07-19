@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type {
   ArchivedSessionInfo,
   SessionStatus,
@@ -110,6 +110,8 @@ export function Sidebar({
     | null
   >(null)
   const [dropId, setDropId] = useState<string | null>(null)
+  // Disambiguate single-click (open repo) from double-click (rename) on the ws name.
+  const nameClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const endDrag = (): void => {
     setDrag(null)
@@ -382,8 +384,20 @@ export function Sidebar({
                           ? `${ws.path} · click to open the repo · double-click to rename`
                           : 'No folder set — double-click to rename, or edit to choose one'
                     }
-                    onClick={() => ws.path && openRepo(ws.path)}
+                    onClick={() => {
+                      // Defer the open so a following double-click (rename) can cancel it.
+                      if (!ws.path || nameClickTimer.current) return
+                      const path = ws.path
+                      nameClickTimer.current = setTimeout(() => {
+                        nameClickTimer.current = null
+                        openRepo(path)
+                      }, 230)
+                    }}
                     onDoubleClick={(e) => {
+                      if (nameClickTimer.current) {
+                        clearTimeout(nameClickTimer.current)
+                        nameClickTimer.current = null
+                      }
                       if (ws.id === COCKPIT_WORKSPACE_ID) return
                       e.stopPropagation()
                       startWsEdit(ws)

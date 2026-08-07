@@ -414,6 +414,13 @@ body {
 .ws-issue-num {
   color: var(--accent);
   font-variant-numeric: tabular-nums;
+  flex: none;
+}
+.ws-issue-num.link {
+  cursor: pointer;
+}
+.ws-issue-num.link:hover {
+  text-decoration: underline;
 }
 .ws-issue-title {
   flex: 1;

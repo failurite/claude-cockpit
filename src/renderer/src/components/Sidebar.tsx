@@ -536,7 +536,15 @@ export function Sidebar({
       {ctxMenu && (
         <>
           <div className="menu-overlay" onClick={() => setCtxMenu(null)} onContextMenu={(e) => { e.preventDefault(); setCtxMenu(null) }} />
-          <div className="ctx-menu" style={{ left: ctxMenu.x, top: ctxMenu.y }}>
+          <div
+            className="ctx-menu"
+            style={{
+              // Clamp to the viewport so a right-click near the bottom/right edge
+              // isn't clipped (menu ~200×210 for the full set).
+              left: Math.max(8, Math.min(ctxMenu.x, window.innerWidth - 208)),
+              top: Math.max(8, Math.min(ctxMenu.y, window.innerHeight - 218))
+            }}
+          >
             <div className="ctx-menu-title">{ctxMenu.s.name}</div>
             {ctxMenu.s.kind !== 'dev' && (
               <button

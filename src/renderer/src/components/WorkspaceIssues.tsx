@@ -144,7 +144,16 @@ export function WorkspaceIssues({
                   title={`${i.title}\n${i.labels.join(', ')}`}
                   onClick={() => toggleDetail(i.number)}
                 >
-                  <span className="ws-issue-num">#{i.number}</span>
+                  <span
+                    className="ws-issue-num link"
+                    title="Open this issue on GitHub"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      window.cockpit.openExternal(i.url)
+                    }}
+                  >
+                    #{i.number}
+                  </span>
                   <span className="ws-issue-title">{i.title}</span>
                   {live ? (
                     <span className={`dot ${live.status}`} title={`session: ${live.status}`} />

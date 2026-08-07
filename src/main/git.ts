@@ -105,8 +105,22 @@ export async function gitPush(dir: string): Promise<{ ok: boolean; message: stri
  * keeps the stash, so work is never lost.
  */
 export async function gitPull(dir: string): Promise<{ ok: boolean; message: string }> {
+  // Target the single upstream branch explicitly (e.g. `origin main`) rather than
+  // letting `git pull` infer merge targets from FETCH_HEAD — that inference can, in
+  // some states, hand the rebase more than one head ("Cannot rebase onto multiple
+  // branches"). Falls back to a bare pull when there's no upstream tracking ref.
+  const args = ['pull', '--autostash']
   try {
-    const r = await runGit(dir, ['pull', '--autostash'], 60000)
+    const upstream = (
+      await runGit(dir, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'])
+    ).stdout.trim()
+    const slash = upstream.indexOf('/')
+    if (slash > 0) args.push(upstream.slice(0, slash), upstream.slice(slash + 1))
+  } catch {
+    /* no upstream configured — bare `pull --autostash` */
+  }
+  try {
+    const r = await runGit(dir, args, 60000)
     return { ok: true, message: (r.stdout || r.stderr).trim() || 'Up to date.' }
   } catch (e) {
     return { ok: false, message: errMsg(e) }

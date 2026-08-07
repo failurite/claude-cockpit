@@ -97,10 +97,16 @@ export async function gitPush(dir: string): Promise<{ ok: boolean; message: stri
   }
 }
 
-/** `git pull`. Returns the command output (success or failure) for the UI. */
+/**
+ * `git pull --autostash`. `--autostash` makes the Pull button handle a dirty
+ * working tree: git stashes local changes, pulls (merge or rebase per config),
+ * then restores them — instead of failing with "cannot pull with rebase: you
+ * have unstaged changes". No-op when the tree is clean; on a restore conflict git
+ * keeps the stash, so work is never lost.
+ */
 export async function gitPull(dir: string): Promise<{ ok: boolean; message: string }> {
   try {
-    const r = await runGit(dir, ['pull'], 60000)
+    const r = await runGit(dir, ['pull', '--autostash'], 60000)
     return { ok: true, message: (r.stdout || r.stderr).trim() || 'Up to date.' }
   } catch (e) {
     return { ok: false, message: errMsg(e) }

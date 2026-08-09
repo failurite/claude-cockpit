@@ -180,14 +180,21 @@ async function doFinish(repoDir: string, worktree: string, branch: string): Prom
       } catch (e) {
         return { ok: false, status: 'error', message: `push failed: ${short(e)}` }
       }
-      // Best-effort: bring the main checkout up to date (skip if dirty/off-branch).
+      // Bring the main checkout up to date so `main` is current after Done.
       try {
         const cur = (await runGit(repoDir, ['rev-parse', '--abbrev-ref', 'HEAD'])).stdout.trim()
-        const mainDirty = (await runGit(repoDir, ['status', '--porcelain'])).stdout.trim()
-        if (cur === base && !mainDirty) await runGit(repoDir, ['pull', '--ff-only'], 30000)
-        else note = ` Local ${base} not updated (checkout busy) — pull via the workspace git row.`
-      } catch {
-        note = ` Local ${base} not updated — pull via the workspace git row.`
+        if (cur === base) {
+          // On the default branch → pull with --autostash so uncommitted work in
+          // the main checkout doesn't block the update (it's stashed + restored).
+          await runGit(repoDir, ['pull', '--autostash', 'origin', base], 60000)
+        } else {
+          // On another branch → fast-forward the local base ref to origin without
+          // switching (fails only if base is checked out elsewhere or diverged).
+          await runGit(repoDir, ['fetch', 'origin', `${base}:${base}`], 30000)
+          note = ` Local ${base} fast-forwarded (checkout stays on "${cur}").`
+        }
+      } catch (e) {
+        note = ` Local ${base} not updated (${short(e)}) — pull via the workspace git row.`
       }
     } else {
       // No remote: fast-forward the local default branch (requires it checked out + clean).

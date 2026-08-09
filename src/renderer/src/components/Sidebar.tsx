@@ -96,7 +96,15 @@ export function Sidebar({
 }: Props): JSX.Element {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  // Collapsed (minimized) workspaces, persisted across app reloads via localStorage.
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem('collapsedWorkspaces')
+      return new Set<string>(raw ? JSON.parse(raw) : [])
+    } catch {
+      return new Set<string>()
+    }
+  })
   const [menuFor, setMenuFor] = useState<string | null>(null)
   // Inline workspace rename (kept separate from session rename so ids can't clash).
   const [editingWsId, setEditingWsId] = useState<string | null>(null)
@@ -167,6 +175,11 @@ export function Sidebar({
     setCollapsed((prev) => {
       const next = new Set(prev)
       next.has(id) ? next.delete(id) : next.add(id)
+      try {
+        localStorage.setItem('collapsedWorkspaces', JSON.stringify([...next]))
+      } catch {
+        /* storage unavailable — collapse still works this session */
+      }
       return next
     })
 

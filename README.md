@@ -30,6 +30,9 @@ work, and which is done. `claude-cockpit` gives you:
 - **Names you control** — double-click a session to rename it; names persist.
 - **Sub-agent counts** — see how many sub-agents (Task tool / sidechains) a
   session currently has running.
+- **Create issues** — each GitHub-repo workspace's ▾ menu has "New GitHub issue…":
+  title, markdown description (paste screenshots to upload + embed them), and the
+  repo's labels as checkboxes.
 - **Model readout + switcher** — the status bar shows the model each session is
   actually using (read from its transcript) with a dropdown to switch it (drives
   `/model` in the session; Claude Code may ask you to confirm in the terminal).

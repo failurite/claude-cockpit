@@ -31,7 +31,10 @@ Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design. Key files
 - `src/main/sessions-rpc.ts` — localhost RPC (:47617) the cross-session MCP shim
   calls: list sibling sessions / read another session's transcript digest.
 - `src/main/git.ts` — git status / push / pull for workspace dirs (exports `runGit`).
-- `src/main/issues.ts` — gh CLI wrapper (list/view/close GitHub issues).
+- `src/main/issues.ts` — gh CLI wrapper: list/view/close issues, list repo labels,
+  create an issue (`--body-file`), and upload a pasted image to GitHub's
+  user-attachments store (undocumented `uploads.github.com` endpoint, Bearer token)
+  so it can be embedded in an issue body.
 - `src/main/worktrees.ts` — per-issue worktree/branch isolation + the serialized
   Done flow (rebase → merge to default branch → push → cleanup).
 - `src/main/tmux.ts` — persistent tmux backing for **every** claude session

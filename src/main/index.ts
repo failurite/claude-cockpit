@@ -13,7 +13,17 @@ import { BrowserManager } from './browser.js'
 import { startBrowserRpc, type BrowserRpcServer } from './browser-rpc.js'
 import { startSessionsRpc, type SessionsRpcServer } from './sessions-rpc.js'
 import { gitStatus, gitPush, gitPull, gitClone } from './git.js'
-import { ghAvailable, listIssues, viewIssue, closeIssue, createRepo, renameRepo } from './issues.js'
+import {
+  ghAvailable,
+  listIssues,
+  viewIssue,
+  closeIssue,
+  createRepo,
+  renameRepo,
+  listLabels,
+  createIssue,
+  uploadIssueImage
+} from './issues.js'
 import { createIssueWorktree, finishIssueWorktree } from './worktrees.js'
 import type { IssueDoneResult, IssueRef } from '../shared/types.js'
 import { initStore, getFlag, setFlag, getWorkspaces, saveWorkspaces } from './store.js'
@@ -343,6 +353,11 @@ async function bootstrap(): Promise<void> {
     startIssueSession(workspaceId, number)
   )
   ipcMain.handle('issues:done', (_e, paneId: string) => finishIssueSession(paneId))
+  ipcMain.handle('issues:labels', (_e, dir: string) => listLabels(expandTilde(dir)))
+  ipcMain.handle('issues:create', (_e, dir: string, opts) => createIssue(expandTilde(dir), opts))
+  ipcMain.handle('issues:upload-image', (_e, dir: string, opts) =>
+    uploadIssueImage(expandTilde(dir), opts)
+  )
 
   // ---- git (workspace push/pull) ----
   ipcMain.handle('git:status', (_e, dir: string, fetch?: boolean) =>

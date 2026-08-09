@@ -139,6 +139,14 @@ export interface ArchivedSessionInfo {
   archivedAt: number
 }
 
+/** A label defined on a repo (for the New-issue label picker). */
+export interface RepoLabel {
+  name: string
+  /** Hex color (no leading #), or '' if unknown. */
+  color: string
+  description: string
+}
+
 /** A GitHub issue as listed in a workspace's Issues panel (via the gh CLI). */
 export interface IssueSummary {
   number: number
@@ -416,6 +424,18 @@ export interface CockpitApi {
     start(workspaceId: string, number: number): Promise<TerminalSession>
     /** Finish an issue session: rebase → merge to default branch → push → close issue. */
     done(paneId: string): Promise<IssueDoneResult>
+    /** Labels defined on the repo (for the New-issue picker). */
+    labels(dir: string): Promise<RepoLabel[]>
+    /** Create a new issue; returns its URL on success. */
+    create(
+      dir: string,
+      opts: { title: string; body: string; labels: string[] }
+    ): Promise<{ ok: boolean; url?: string; message?: string }>
+    /** Upload a pasted image to GitHub and return a URL to embed in an issue body. */
+    uploadImage(
+      dir: string,
+      opts: { name: string; contentType: string; dataBase64: string }
+    ): Promise<{ ok: boolean; url?: string; message?: string }>
   }
   /** Git status + push/pull for a workspace directory. */
   git: {

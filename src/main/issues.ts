@@ -1,6 +1,11 @@
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import type { IssueSummary } from '../shared/types.js'
+import { writeFileSync, unlinkSync } from 'fs'
+import { join } from 'path'
+import { tmpdir } from 'os'
+import { randomUUID } from 'crypto'
+import { net } from 'electron'
+import type { IssueSummary, RepoLabel } from '../shared/types.js'
 
 const pexec = promisify(execFile)
 
@@ -62,6 +67,83 @@ export async function renameRepo(
     return { ok: true, message: (r.stdout || r.stderr).trim() || 'Renamed.' }
   } catch (e) {
     return { ok: false, message: errMsg(e) }
+  }
+}
+
+/** Open labels defined on the repo, for the New-issue label picker. */
+export async function listLabels(dir: string): Promise<RepoLabel[]> {
+  try {
+    const r = await gh(dir, ['label', 'list', '--limit', '200', '--json', 'name,color,description'])
+    const raw = JSON.parse(r.stdout || '[]') as Array<{
+      name: string
+      color?: string
+      description?: string
+    }>
+    return raw.map((l) => ({ name: l.name, color: l.color || '', description: l.description || '' }))
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Create an issue. Body is passed via a temp file (`--body-file`) so long,
+ * multiline markdown (with pasted-image links) survives without arg/quoting
+ * limits. Returns the new issue's URL.
+ */
+export async function createIssue(
+  dir: string,
+  opts: { title: string; body: string; labels: string[] }
+): Promise<{ ok: boolean; url?: string; message?: string }> {
+  const tmp = join(tmpdir(), `cockpit-issue-${randomUUID()}.md`)
+  try {
+    writeFileSync(tmp, opts.body ?? '')
+    const args = ['issue', 'create', '--title', opts.title, '--body-file', tmp]
+    for (const l of opts.labels) args.push('--label', l)
+    const r = await gh(dir, args, 60000)
+    // gh prints the created issue URL as the last stdout line.
+    const url = (r.stdout || '').trim().split('\n').pop()
+    return { ok: true, url: url || undefined }
+  } catch (e) {
+    return { ok: false, message: errMsg(e) }
+  } finally {
+    try {
+      unlinkSync(tmp)
+    } catch {
+      /* already gone */
+    }
+  }
+}
+
+/**
+ * Upload an image to GitHub's user-attachments store (the same target the web
+ * composer uses when you paste) and return its `github.com/user-attachments/...`
+ * URL to embed in an issue body. Uses the user's gh token; endpoint is
+ * undocumented but works with a Bearer token.
+ */
+export async function uploadIssueImage(
+  dir: string,
+  opts: { name: string; contentType: string; dataBase64: string }
+): Promise<{ ok: boolean; url?: string; message?: string }> {
+  try {
+    const repoId = (await gh(dir, ['repo', 'view', '--json', 'id', '--jq', '.id'])).stdout.trim()
+    const token = (await gh(dir, ['auth', 'token'])).stdout.trim()
+    if (!repoId || !token) return { ok: false, message: 'Not signed in to GitHub (gh).' }
+    const contentType = opts.contentType || 'image/png'
+    const url =
+      `https://uploads.github.com/user-attachments/assets` +
+      `?name=${encodeURIComponent(opts.name || 'image.png')}` +
+      `&content_type=${encodeURIComponent(contentType)}` +
+      `&repository_id=${encodeURIComponent(repoId)}`
+    const res = await net.fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': contentType },
+      body: Buffer.from(opts.dataBase64, 'base64')
+    })
+    if (!res.ok) return { ok: false, message: `Image upload failed (HTTP ${res.status}).` }
+    const json = (await res.json()) as { url?: string }
+    return json?.url ? { ok: true, url: json.url } : { ok: false, message: 'No URL in upload response.' }
+  } catch (e) {
+    return { ok: false, message: (e as Error).message }
   }
 }
 

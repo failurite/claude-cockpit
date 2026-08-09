@@ -45,6 +45,8 @@ interface Props {
   onRenameWorkspace: (id: string, name: string) => void
   /** Rename the workspace's GitHub repo (gh repo rename). */
   onRenameRepo: (ws: Workspace) => void
+  /** Open the New GitHub issue dialog for this workspace. */
+  onNewIssue: (ws: Workspace) => void
   onDeleteWorkspace: (id: string) => void
   /** Drag-reorder user workspaces (ids in the new order). */
   onReorderWorkspaces: (orderedIds: string[]) => void
@@ -83,6 +85,7 @@ export function Sidebar({
   onEditWorkspace,
   onRenameWorkspace,
   onRenameRepo,
+  onNewIssue,
   onDeleteWorkspace,
   onReorderWorkspaces,
   onReorderSessions,
@@ -464,6 +467,16 @@ export function Sidebar({
                             >
                               Edit workspace…
                             </button>
+                            {ws.path && (
+                              <button
+                                onClick={() => {
+                                  setMenuFor(null)
+                                  onNewIssue(ws)
+                                }}
+                              >
+                                New GitHub issue…
+                              </button>
+                            )}
                             {ws.path && (
                               <button
                                 onClick={() => {

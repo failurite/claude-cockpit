@@ -12,6 +12,7 @@ import { TerminalView } from './components/TerminalView'
 import { BrowserPanel } from './components/BrowserPanel'
 import { LaunchDialog, type LaunchValues } from './components/LaunchDialog'
 import { RepoRenameDialog } from './components/RepoRenameDialog'
+import { NewIssueDialog } from './components/NewIssueDialog'
 import { SettingsPanel } from './components/SettingsPanel'
 
 /**
@@ -58,6 +59,8 @@ export default function App(): JSX.Element {
   const [settingsOpen, setSettingsOpen] = useState(false)
   // Workspace whose GitHub repo is being renamed (null = dialog closed).
   const [renameRepoWs, setRenameRepoWs] = useState<Workspace | null>(null)
+  // Workspace for the New GitHub issue dialog (null = closed).
+  const [newIssueWs, setNewIssueWs] = useState<Workspace | null>(null)
   // Archived (closed-but-saved) sessions, reopenable on demand.
   const [archived, setArchived] = useState<ArchivedSessionInfo[]>([])
   // Which panes currently show their embedded browser (auto-opens on first tab).
@@ -154,9 +157,9 @@ export default function App(): JSX.Element {
   // over renderer HTML. Force it hidden while any modal is open.
   useEffect(() => {
     window.cockpit.browser.setOverlaySuppressed(
-      !!dialog || settingsOpen || updatePrompt || !!renameRepoWs
+      !!dialog || settingsOpen || updatePrompt || !!renameRepoWs || !!newIssueWs
     )
-  }, [dialog, settingsOpen, updatePrompt, renameRepoWs])
+  }, [dialog, settingsOpen, updatePrompt, renameRepoWs, newIssueWs])
 
   // Auto-reveal a pane's browser the moment the agent opens its first tab.
   useEffect(() => {
@@ -398,6 +401,7 @@ export default function App(): JSX.Element {
             onEditWorkspace={(ws) => setDialog({ kind: 'workspace-edit', ws })}
             onRenameWorkspace={renameWorkspace}
             onRenameRepo={(ws) => setRenameRepoWs(ws)}
+            onNewIssue={(ws) => setNewIssueWs(ws)}
             onDeleteWorkspace={deleteWorkspace}
             onReorderWorkspaces={reorderWorkspaces}
             onReorderSessions={reorderSessions}
@@ -535,6 +539,16 @@ export default function App(): JSX.Element {
           ws={renameRepoWs}
           onResult={setWorkspaces}
           onClose={() => setRenameRepoWs(null)}
+        />
+      )}
+      {newIssueWs && (
+        <NewIssueDialog
+          workspacePath={newIssueWs.path}
+          onCreated={() => {
+            setNewIssueWs(null)
+            setIssuesRefreshKey((k) => k + 1) // a new open issue → refresh Issues lists
+          }}
+          onCancel={() => setNewIssueWs(null)}
         />
       )}
       {settingsOpen && (

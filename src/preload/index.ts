@@ -127,7 +127,10 @@ const api: CockpitApi = {
     list: (dir) => ipcRenderer.invoke('issues:list', dir),
     view: (dir, number) => ipcRenderer.invoke('issues:view', dir, number),
     start: (workspaceId, number) => ipcRenderer.invoke('issues:start', workspaceId, number),
-    done: (paneId) => ipcRenderer.invoke('issues:done', paneId)
+    done: (paneId) => ipcRenderer.invoke('issues:done', paneId),
+    labels: (dir) => ipcRenderer.invoke('issues:labels', dir),
+    create: (dir, opts) => ipcRenderer.invoke('issues:create', dir, opts),
+    uploadImage: (dir, opts) => ipcRenderer.invoke('issues:upload-image', dir, opts)
   },
   git: {
     status: (dir, fetch) => ipcRenderer.invoke('git:status', dir, fetch),

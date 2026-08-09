@@ -126,7 +126,8 @@ const api: CockpitApi = {
     available: (dir) => ipcRenderer.invoke('issues:available', dir),
     list: (dir) => ipcRenderer.invoke('issues:list', dir),
     view: (dir, number) => ipcRenderer.invoke('issues:view', dir, number),
-    start: (workspaceId, number) => ipcRenderer.invoke('issues:start', workspaceId, number),
+    start: (workspaceId, number, model) =>
+      ipcRenderer.invoke('issues:start', workspaceId, number, model),
     done: (paneId) => ipcRenderer.invoke('issues:done', paneId),
     labels: (dir) => ipcRenderer.invoke('issues:labels', dir),
     create: (dir, opts) => ipcRenderer.invoke('issues:create', dir, opts),

@@ -123,6 +123,9 @@ function claudeFlags(
 ): string[] {
   const flags: string[] = []
   if (options.dangerouslySkipPermissions) flags.push('--dangerously-skip-permissions')
+  // Launch model (e.g. opus/sonnet/haiku). quoteArg handles alias forms like
+  // `opus[1m]` so the shell doesn't glob the brackets.
+  if (options.model) flags.push('--model', quoteArg(options.model))
   // External Chrome is the ONLY path that uses Claude's native Claude-in-Chrome
   // connector; opt in explicitly, or fall back to it if no embedded config exists.
   const useExternalChrome = options.chrome && (options.externalChrome || !browserMcpConfig)

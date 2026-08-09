@@ -22,6 +22,8 @@ export interface SessionOptions {
   externalChrome: boolean
   /** Extra raw args appended verbatim to the claude command (e.g. "--model opus"). */
   extraArgs: string
+  /** `--model` alias to launch with (e.g. "opus"/"sonnet"/"haiku"); unset = account default. */
+  model?: string
 }
 
 /** Baseline options for a brand-new workspace / session: browser on, embedded. */
@@ -420,8 +422,8 @@ export interface CockpitApi {
     list(dir: string): Promise<IssueSummary[]>
     /** Full detail (body included) for one issue — for previewing before starting a session. */
     view(dir: string, number: number): Promise<{ number: number; title: string; body: string; url: string }>
-    /** Create an isolated worktree + branch for an issue and spawn a session in it. */
-    start(workspaceId: string, number: number): Promise<TerminalSession>
+    /** Create an isolated worktree + branch for an issue and spawn a session in it. `model` = `--model` alias. */
+    start(workspaceId: string, number: number, model?: string): Promise<TerminalSession>
     /** Finish an issue session: rebase → merge to default branch → push → close issue. */
     done(paneId: string): Promise<IssueDoneResult>
     /** Labels defined on the repo (for the New-issue picker). */

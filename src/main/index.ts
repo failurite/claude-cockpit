@@ -349,8 +349,8 @@ async function bootstrap(): Promise<void> {
   ipcMain.handle('issues:view', (_e, dir: string, number: number) =>
     viewIssue(expandTilde(dir), number)
   )
-  ipcMain.handle('issues:start', (_e, workspaceId: string, number: number) =>
-    startIssueSession(workspaceId, number)
+  ipcMain.handle('issues:start', (_e, workspaceId: string, number: number, model?: string) =>
+    startIssueSession(workspaceId, number, model)
   )
   ipcMain.handle('issues:done', (_e, paneId: string) => finishIssueSession(paneId))
   ipcMain.handle('issues:labels', (_e, dir: string) => listLabels(expandTilde(dir)))
@@ -504,7 +504,8 @@ function createDevSession(): ReturnType<SessionManager['create']> {
  */
 async function startIssueSession(
   workspaceId: string,
-  number: number
+  number: number,
+  model?: string
 ): Promise<import('../shared/types.js').TerminalSession> {
   const ws = findWorkspace(workspaceId)
   if (!ws) throw new Error('workspace not found')
@@ -552,7 +553,7 @@ async function startIssueSession(
     // The #N chip already shows the number — the name is just the title.
     name: issue.title.slice(0, 60),
     workspaceId,
-    options: ws.defaults,
+    options: model ? { ...ws.defaults, model } : ws.defaults,
     issue: ref,
     initialPrompt: prompt
   })

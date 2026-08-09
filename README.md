@@ -36,6 +36,8 @@ work, and which is done. `claude-cockpit` gives you:
 - **Model readout + switcher** — the status bar shows the model each session is
   actually using (read from its transcript) with a dropdown to switch it (drives
   `/model` in the session; Claude Code may ask you to confirm in the terminal).
+  Starting a session (new, or from an issue) prompts for the model, defaulting to
+  the newest.
 - **Live load meters** — the sidebar header shows system CPU + memory and a
   **token-throughput meter** (how hard Claude is working right now across your
   live sessions, computed from their transcripts — a live rate, not a quota,

@@ -13,6 +13,7 @@ import { BrowserPanel } from './components/BrowserPanel'
 import { LaunchDialog, type LaunchValues } from './components/LaunchDialog'
 import { RepoRenameDialog } from './components/RepoRenameDialog'
 import { NewIssueDialog } from './components/NewIssueDialog'
+import { StartSessionDialog } from './components/StartSessionDialog'
 import { SettingsPanel } from './components/SettingsPanel'
 
 /**
@@ -61,6 +62,10 @@ export default function App(): JSX.Element {
   const [renameRepoWs, setRenameRepoWs] = useState<Workspace | null>(null)
   // Workspace for the New GitHub issue dialog (null = closed).
   const [newIssueWs, setNewIssueWs] = useState<Workspace | null>(null)
+  // Pending session start awaiting a model choice (from the + button or an issue).
+  const [startPrompt, setStartPrompt] = useState<
+    { kind: 'new'; workspaceId: string } | { kind: 'issue'; workspaceId: string; number: number } | null
+  >(null)
   // Archived (closed-but-saved) sessions, reopenable on demand.
   const [archived, setArchived] = useState<ArchivedSessionInfo[]>([])
   // Which panes currently show their embedded browser (auto-opens on first tab).
@@ -157,9 +162,9 @@ export default function App(): JSX.Element {
   // over renderer HTML. Force it hidden while any modal is open.
   useEffect(() => {
     window.cockpit.browser.setOverlaySuppressed(
-      !!dialog || settingsOpen || updatePrompt || !!renameRepoWs || !!newIssueWs
+      !!dialog || settingsOpen || updatePrompt || !!renameRepoWs || !!newIssueWs || !!startPrompt
     )
-  }, [dialog, settingsOpen, updatePrompt, renameRepoWs, newIssueWs])
+  }, [dialog, settingsOpen, updatePrompt, renameRepoWs, newIssueWs, startPrompt])
 
   // Auto-reveal a pane's browser the moment the agent opens its first tab.
   useEffect(() => {
@@ -169,10 +174,28 @@ export default function App(): JSX.Element {
     return off
   }, [])
 
-  const newSession = useCallback(async (workspaceId: string) => {
-    const s = await window.cockpit.createSession({ workspaceId })
-    setActiveId(s.id)
+  // Starting a session (via + or an issue) first asks which model to use.
+  const newSession = useCallback((workspaceId: string) => {
+    setStartPrompt({ kind: 'new', workspaceId })
   }, [])
+  // Perform the pending start with the chosen model.
+  const confirmStart = useCallback(
+    async (model: string) => {
+      const p = startPrompt
+      if (!p) return
+      setStartPrompt(null)
+      try {
+        const s =
+          p.kind === 'new'
+            ? await window.cockpit.createSession({ workspaceId: p.workspaceId, options: { model } })
+            : await window.cockpit.issues.start(p.workspaceId, p.number, model)
+        setActiveId(s.id)
+      } catch (e) {
+        setIssueMsg(`Couldn't start session: ${(e as Error).message}`)
+      }
+    },
+    [startPrompt]
+  )
 
   const closeSession = useCallback((id: string) => window.cockpit.closeSession(id), [])
   const restartSession = useCallback(async (id: string) => {
@@ -199,13 +222,8 @@ export default function App(): JSX.Element {
   // Bumped after a successful Done so the workspace Issues lists re-fetch (the
   // just-merged issue is now closed and should drop off the open-issues list).
   const [issuesRefreshKey, setIssuesRefreshKey] = useState(0)
-  const startIssue = useCallback(async (workspaceId: string, number: number) => {
-    try {
-      const s = await window.cockpit.issues.start(workspaceId, number)
-      setActiveId(s.id)
-    } catch (e) {
-      setIssueMsg(`Couldn't start issue session: ${(e as Error).message}`)
-    }
+  const startIssue = useCallback((workspaceId: string, number: number) => {
+    setStartPrompt({ kind: 'issue', workspaceId, number })
   }, [])
   const doneIssue = useCallback(async (paneId: string) => {
     setIssueBusy(true)
@@ -539,6 +557,13 @@ export default function App(): JSX.Element {
           ws={renameRepoWs}
           onResult={setWorkspaces}
           onClose={() => setRenameRepoWs(null)}
+        />
+      )}
+      {startPrompt && (
+        <StartSessionDialog
+          title={startPrompt.kind === 'issue' ? `Start session for #${startPrompt.number}` : 'New session'}
+          onStart={confirmStart}
+          onCancel={() => setStartPrompt(null)}
         />
       )}
       {newIssueWs && (

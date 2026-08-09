@@ -1198,6 +1198,38 @@ body.dragging-h .v-resizer {
   word-break: break-all;
   margin-bottom: 14px;
 }
+/* Hover preview for an issue — full title + description snippet. */
+.issue-preview {
+  position: fixed;
+  z-index: 60;
+  width: 360px;
+  max-height: 320px;
+  overflow: hidden;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+.issue-preview-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.issue-preview-labels {
+  font-size: 10px;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+.issue-preview-body {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 .modal-wide {
   max-width: 620px;
   width: 92vw;

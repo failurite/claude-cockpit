@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { IssueSummary, TerminalSession } from '../../../shared/types'
 import { useGitStatus } from '../hooks/useGitStatus'
 
@@ -35,6 +35,11 @@ export function WorkspaceIssues({
   /** Which issue's detail is expanded, and a cache of fetched bodies. */
   const [expanded, setExpanded] = useState<number | null>(null)
   const [bodies, setBodies] = useState<Record<number, string>>({})
+  /** Hover preview: the issue + where to anchor the floating card. */
+  const [preview, setPreview] = useState<{ issue: IssueSummary; top: number; left: number } | null>(
+    null
+  )
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Only a GitHub-backed repo has issues — don't show the section (and don't
   // imply it's a GitHub project) for a local-only repo or a non-GitHub remote.
@@ -69,20 +74,40 @@ export function WorkspaceIssues({
   const sessionFor = (n: number): TerminalSession | undefined =>
     sessions.find((s) => s.issue?.number === n)
 
+  /** Fetch + cache an issue's body once (shared by the expand and hover-preview paths). */
+  const ensureBody = async (n: number): Promise<void> => {
+    if (bodies[n] !== undefined) return
+    try {
+      const d = await window.cockpit.issues.view(path, n)
+      setBodies((m) => ({ ...m, [n]: d.body?.trim() || '(no description)' }))
+    } catch {
+      setBodies((m) => ({ ...m, [n]: '(failed to load issue body)' }))
+    }
+  }
+
   const toggleDetail = async (n: number): Promise<void> => {
     if (expanded === n) {
       setExpanded(null)
       return
     }
     setExpanded(n)
-    if (bodies[n] === undefined) {
-      try {
-        const d = await window.cockpit.issues.view(path, n)
-        setBodies((m) => ({ ...m, [n]: d.body?.trim() || '(no description)' }))
-      } catch {
-        setBodies((m) => ({ ...m, [n]: '(failed to load issue body)' }))
-      }
-    }
+    await ensureBody(n)
+  }
+
+  // Hover an issue row → after a short delay, show a floating card with the full
+  // title + a description snippet (fetched lazily). A lightweight "what am I
+  // fixing?" reminder without expanding the row.
+  const onRowEnter = (issue: IssueSummary, e: React.MouseEvent): void => {
+    const r = e.currentTarget.getBoundingClientRect()
+    if (hoverTimer.current) clearTimeout(hoverTimer.current)
+    hoverTimer.current = setTimeout(() => {
+      setPreview({ issue, top: r.top, left: r.right + 8 })
+      void ensureBody(issue.number)
+    }, 350)
+  }
+  const onRowLeave = (): void => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current)
+    setPreview(null)
   }
 
   const toggleLabel = (l: string): void =>
@@ -141,8 +166,9 @@ export function WorkspaceIssues({
               <div key={i.number}>
                 <div
                   className={`ws-issue ${isOpen ? 'expanded' : ''}`}
-                  title={`${i.title}\n${i.labels.join(', ')}`}
                   onClick={() => toggleDetail(i.number)}
+                  onMouseEnter={(e) => onRowEnter(i, e)}
+                  onMouseLeave={onRowLeave}
                 >
                   <span
                     className="ws-issue-num link"
@@ -196,6 +222,29 @@ export function WorkspaceIssues({
               ⟳ refresh
             </button>
           )}
+        </div>
+      )}
+
+      {preview && (
+        <div
+          className="issue-preview"
+          style={{
+            top: Math.max(8, Math.min(preview.top, window.innerHeight - 240)),
+            left: Math.min(preview.left, window.innerWidth - 380)
+          }}
+        >
+          <div className="issue-preview-title">
+            #{preview.issue.number} {preview.issue.title}
+          </div>
+          {preview.issue.labels.length > 0 && (
+            <div className="issue-preview-labels">{preview.issue.labels.join(' · ')}</div>
+          )}
+          <div className="issue-preview-body">
+            {bodies[preview.issue.number] === undefined
+              ? 'Loading…'
+              : bodies[preview.issue.number].slice(0, 600) +
+                (bodies[preview.issue.number].length > 600 ? '…' : '')}
+          </div>
         </div>
       )}
     </div>

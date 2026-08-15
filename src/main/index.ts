@@ -24,7 +24,7 @@ import {
   createIssue,
   uploadIssueImage
 } from './issues.js'
-import { createIssueWorktree, finishIssueWorktree } from './worktrees.js'
+import { createIssueWorktree, finishIssueWorktree, TASK_FILE } from './worktrees.js'
 import type { IssueDoneResult, IssueRef } from '../shared/types.js'
 import { initStore, getFlag, setFlag, getWorkspaces, saveWorkspaces } from './store.js'
 import { hookStatus, installHooks, uninstallHooks } from './hooks-install.js'
@@ -547,6 +547,16 @@ async function startIssueSession(
     `Once it's validated and committed here with clear messages, say it's ready — ` +
     `the user will press Done to merge and close the issue.`
 
+  // The full kickoff (issue body + comments can be large) goes in a git-ignored
+  // file, NOT the launch command: a big body inlined into `tmux new-session …
+  // claude '<body>'` trips tmux's command-length limit ("command too long") and
+  // the pane exits. The launch prompt is a short pointer to that file.
+  writeFileSync(join(worktree, TASK_FILE), prompt, 'utf8')
+  const pointer =
+    `Your complete task is in the file ${TASK_FILE} in this directory — read it in full now ` +
+    `and follow it exactly. It describes GitHub issue #${number}. ` +
+    `(It's Cockpit-generated and git-ignored; don't commit or edit it.)`
+
   return manager.create({
     cwd: worktree,
     command: 'claude',
@@ -555,7 +565,7 @@ async function startIssueSession(
     workspaceId,
     options: model ? { ...ws.defaults, model } : ws.defaults,
     issue: ref,
-    initialPrompt: prompt
+    initialPrompt: pointer
   })
 }
 

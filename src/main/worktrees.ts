@@ -1,8 +1,36 @@
 import { app } from 'electron'
 import { join, basename, isAbsolute } from 'path'
-import { existsSync, mkdirSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { runGit } from './git.js'
 import type { IssueDoneResult } from '../shared/types.js'
+
+/**
+ * Cockpit writes each issue session's full kickoff prompt to this file inside the
+ * worktree (rather than passing it as a launch-command argument): a large issue
+ * body inlined into `tmux new-session … claude '<body>'` trips tmux's fixed
+ * command-length limit ("command too long") and the pane exits before it starts.
+ * The file is git-excluded so it never shows as dirty or gets committed.
+ */
+export const TASK_FILE = '.cockpit-task.md'
+
+/** Ensure the task file is git-ignored in this worktree (best-effort). */
+async function excludeTaskFile(dir: string): Promise<void> {
+  try {
+    const rel = (await runGit(dir, ['rev-parse', '--git-path', 'info/exclude'])).stdout.trim()
+    if (!rel) return
+    const abs = isAbsolute(rel) ? rel : join(dir, rel)
+    let cur = ''
+    try {
+      cur = readFileSync(abs, 'utf8')
+    } catch {
+      /* no exclude file yet */
+    }
+    if (cur.split('\n').includes(TASK_FILE)) return
+    writeFileSync(abs, `${cur && !cur.endsWith('\n') ? `${cur}\n` : cur}${TASK_FILE}\n`)
+  } catch {
+    /* best-effort: a leaked task file is filtered out of the Done dirty check too */
+  }
+}
 
 /**
  * Per-issue isolation for concurrent sessions: each issue gets its own git
@@ -80,7 +108,10 @@ export async function createIssueWorktree(
   const worktree = join(root, `issue-${issueNumber}`)
 
   // Reuse an existing worktree (e.g. re-opening an issue after an app restart).
-  if (existsSync(join(worktree, '.git'))) return { worktree, branch }
+  if (existsSync(join(worktree, '.git'))) {
+    await excludeTaskFile(worktree)
+    return { worktree, branch }
+  }
 
   const remote = await hasRemote(repoDir)
   if (remote) {
@@ -102,6 +133,7 @@ export async function createIssueWorktree(
   }
   if (branchExists) await runGit(repoDir, ['worktree', 'add', worktree, branch], 30000)
   else await runGit(repoDir, ['worktree', 'add', '-b', branch, worktree, startPoint], 30000)
+  await excludeTaskFile(worktree)
   return { worktree, branch }
 }
 
@@ -140,8 +172,13 @@ async function doFinish(repoDir: string, worktree: string, branch: string): Prom
         message: 'A rebase is still in progress in this worktree — finish resolving the conflicts and run `git rebase --continue`.'
       }
     }
-    // 1) Everything must be committed.
-    const dirty = (await runGit(worktree, ['status', '--porcelain'])).stdout.trim()
+    // 1) Everything must be committed. Ignore Cockpit's own git-excluded task file
+    //    (belt-and-suspenders in case the exclude didn't take).
+    const dirty = (await runGit(worktree, ['status', '--porcelain'])).stdout
+      .split('\n')
+      .filter((l) => l.trim() && !l.endsWith(`/${TASK_FILE}`) && !l.endsWith(` ${TASK_FILE}`))
+      .join('\n')
+      .trim()
     if (dirty) {
       return { ok: false, status: 'dirty', message: 'Uncommitted changes in the issue worktree.' }
     }

@@ -43,10 +43,13 @@ interface Persisted {
   workspaces: Workspace[]
   /** One-time flags, e.g. whether we've already auto-installed status hooks. */
   flags: Record<string, boolean>
+  /** Durable renderer UI state that must survive restarts (localStorage is
+   *  origin-scoped and unreliable across dev/packaged builds). */
+  uiState: { collapsedWorkspaces: string[] }
 }
 
 function empty(): Persisted {
-  return { sessions: [], archived: [], workspaces: [], flags: {} }
+  return { sessions: [], archived: [], workspaces: [], flags: {}, uiState: { collapsedWorkspaces: [] } }
 }
 
 let cache: Persisted = empty()
@@ -107,5 +110,14 @@ export function getWorkspaces(): Workspace[] {
 
 export function saveWorkspaces(workspaces: Workspace[]): void {
   cache.workspaces = workspaces
+  flush()
+}
+
+export function getCollapsedWorkspaces(): string[] {
+  return cache.uiState?.collapsedWorkspaces ?? []
+}
+
+export function saveCollapsedWorkspaces(ids: string[]): void {
+  cache.uiState = { ...cache.uiState, collapsedWorkspaces: ids }
   flush()
 }

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type {
   ArchivedSessionInfo,
   SessionStatus,
@@ -99,15 +99,33 @@ export function Sidebar({
 }: Props): JSX.Element {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
-  // Collapsed (minimized) workspaces, persisted across app reloads via localStorage.
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
-    try {
-      const raw = localStorage.getItem('collapsedWorkspaces')
-      return new Set<string>(raw ? JSON.parse(raw) : [])
-    } catch {
-      return new Set<string>()
+  // Collapsed (minimized) workspaces. Persisted in the MAIN-PROCESS store (not
+  // localStorage — that's origin-scoped and didn't survive dev/packaged restarts).
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    let live = true
+    void window.cockpit.settings.get().then((s) => {
+      if (!live) return
+      let ids = s.collapsedWorkspaces ?? []
+      // One-time migration: seed from the old localStorage key if the store is empty.
+      if (ids.length === 0) {
+        try {
+          const raw = localStorage.getItem('collapsedWorkspaces')
+          const legacy = raw ? (JSON.parse(raw) as string[]) : []
+          if (legacy.length) {
+            ids = legacy
+            void window.cockpit.settings.update({ collapsedWorkspaces: legacy })
+          }
+        } catch {
+          /* ignore malformed legacy value */
+        }
+      }
+      setCollapsed(new Set(ids))
+    })
+    return () => {
+      live = false
     }
-  })
+  }, [])
   const [menuFor, setMenuFor] = useState<string | null>(null)
   // Inline workspace rename (kept separate from session rename so ids can't clash).
   const [editingWsId, setEditingWsId] = useState<string | null>(null)
@@ -178,11 +196,8 @@ export function Sidebar({
     setCollapsed((prev) => {
       const next = new Set(prev)
       next.has(id) ? next.delete(id) : next.add(id)
-      try {
-        localStorage.setItem('collapsedWorkspaces', JSON.stringify([...next]))
-      } catch {
-        /* storage unavailable — collapse still works this session */
-      }
+      // Persist durably in the main-process store so it survives restarts.
+      void window.cockpit.settings.update({ collapsedWorkspaces: [...next] })
       return next
     })
 

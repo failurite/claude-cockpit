@@ -26,7 +26,15 @@ import {
 } from './issues.js'
 import { createIssueWorktree, finishIssueWorktree, TASK_FILE } from './worktrees.js'
 import type { IssueDoneResult, IssueRef } from '../shared/types.js'
-import { initStore, getFlag, setFlag, getWorkspaces, saveWorkspaces } from './store.js'
+import {
+  initStore,
+  getFlag,
+  setFlag,
+  getWorkspaces,
+  saveWorkspaces,
+  getCollapsedWorkspaces,
+  saveCollapsedWorkspaces
+} from './store.js'
 import { hookStatus, installHooks, uninstallHooks } from './hooks-install.js'
 import { initUpdater } from './updater.js'
 import {
@@ -405,7 +413,8 @@ function getSettings(): AppSettings {
     killTmuxOnQuit: getFlag('killTmuxOnQuit'),
     hideCockpitWorkspace: getFlag('hideCockpitWorkspace'),
     // Stored as an opt-OUT flag so persistence is on by default.
-    keepSessionsAlive: !getFlag('disableSessionTmux')
+    keepSessionsAlive: !getFlag('disableSessionTmux'),
+    collapsedWorkspaces: getCollapsedWorkspaces()
   }
 }
 
@@ -415,6 +424,8 @@ function updateSettings(patch: Partial<AppSettings>): AppSettings {
     setFlag('hideCockpitWorkspace', patch.hideCockpitWorkspace)
   if (typeof patch.keepSessionsAlive === 'boolean')
     setFlag('disableSessionTmux', !patch.keepSessionsAlive)
+  if (Array.isArray(patch.collapsedWorkspaces))
+    saveCollapsedWorkspaces(patch.collapsedWorkspaces)
   return getSettings()
 }
 

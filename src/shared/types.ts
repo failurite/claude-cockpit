@@ -487,6 +487,9 @@ export interface AppSettings {
    * session always persists regardless.
    */
   keepSessionsAlive: boolean
+  /** Workspace ids the user has collapsed (minimized) in the sidebar; persisted
+   *  in the main-process store so it survives restarts (localStorage was unreliable). */
+  collapsedWorkspaces: string[]
 }
 
 export interface AppInfo {

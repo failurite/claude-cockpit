@@ -33,7 +33,9 @@ import {
   getWorkspaces,
   saveWorkspaces,
   getCollapsedWorkspaces,
-  saveCollapsedWorkspaces
+  saveCollapsedWorkspaces,
+  getUiState,
+  setUiValue
 } from './store.js'
 import { hookStatus, installHooks, uninstallHooks } from './hooks-install.js'
 import { initUpdater } from './updater.js'
@@ -376,6 +378,10 @@ async function bootstrap(): Promise<void> {
 
   ipcMain.handle('settings:get', () => getSettings())
   ipcMain.handle('settings:update', (_e, patch: Partial<AppSettings>) => updateSettings(patch))
+
+  // ---- durable UI state (selections, filters, panel open state) ----
+  ipcMain.handle('ui:get', () => getUiState())
+  ipcMain.on('ui:set', (_e, key: string, value: unknown) => setUiValue(key, value))
   ipcMain.handle('dialog:pick-folder', () => pickFolder())
   ipcMain.handle('workspaces:list', () => listAllWorkspaces())
   ipcMain.handle('workspaces:save', (_e, ws: Workspace) => upsertWorkspace(ws))

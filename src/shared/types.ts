@@ -451,6 +451,15 @@ export interface CockpitApi {
     get(): Promise<AppSettings>
     update(patch: Partial<AppSettings>): Promise<AppSettings>
   }
+  /**
+   * Durable renderer UI state (selections, filters, panel open/expanded state)
+   * persisted in the main-process store so it survives restarts. A generic bag
+   * keyed by string; values are JSON-serializable.
+   */
+  ui: {
+    get(): Promise<Record<string, unknown>>
+    set(key: string, value: unknown): void
+  }
   /** Auto-update (electron-updater) against the GitHub Releases feed. */
   updates: {
     /** The latest known status (no network call). */

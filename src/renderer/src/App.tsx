@@ -112,9 +112,11 @@ export default function App(): JSX.Element {
 
   // Initial load + live updates.
   useEffect(() => {
-    window.cockpit.listSessions().then((s) => {
+    Promise.all([window.cockpit.listSessions(), window.cockpit.ui.get()]).then(([s, ui]) => {
       setSessions(s)
-      if (s.length && !activeId) setActiveId(s[0].id)
+      // Restore the previously-selected session if it still exists, else the first.
+      const savedId = ui.activeSessionId as string | undefined
+      if (!activeId) setActiveId((savedId && s.find((x) => x.id === savedId)?.id) || s[0]?.id || null)
     })
     window.cockpit.workspaces.list().then(setWorkspaces)
     window.cockpit.archivedSessions().then(setArchived)
@@ -144,6 +146,11 @@ export default function App(): JSX.Element {
       setActiveId(sessions[0]?.id ?? null)
     }
   }, [sessions, activeId])
+
+  // Persist the active selection so it's restored on next launch.
+  useEffect(() => {
+    if (activeId) window.cockpit.ui.set('activeSessionId', activeId)
+  }, [activeId])
 
   // A staged local update: prompt now/later when it lands, and keep a restart
   // button afterward. Also re-check on mount in case the event fired first.

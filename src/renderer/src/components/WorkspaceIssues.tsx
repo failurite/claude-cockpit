@@ -40,6 +40,11 @@ export function WorkspaceIssues({
     null
   )
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Durable per-workspace issue-panel state (open / label filter / expanded row),
+  // persisted in the main store so it survives restarts. `restored` gates the
+  // save effect so restoring doesn't immediately re-save intermediate values.
+  const uiKey = `issuesUi:${workspaceId}`
+  const restored = useRef(false)
 
   // Only a GitHub-backed repo has issues — don't show the section (and don't
   // imply it's a GitHub project) for a local-only repo or a non-GitHub remote.
@@ -116,6 +121,42 @@ export function WorkspaceIssues({
       next.has(l) ? next.delete(l) : next.add(l)
       return next
     })
+
+  // Restore panel state on mount (open list, active label filter, expanded row).
+  useEffect(() => {
+    let live = true
+    void window.cockpit.ui.get().then(async (all) => {
+      if (!live) return
+      const st = all[uiKey] as
+        | { open?: boolean; labels?: string[]; expanded?: number | null }
+        | undefined
+      if (st) {
+        if (st.labels?.length) setLabelFilter(new Set(st.labels))
+        const wantOpen = !!st.open || st.expanded != null
+        if (wantOpen) {
+          setOpen(true)
+          await refresh()
+          if (!live) return
+        }
+        if (st.expanded != null) {
+          setExpanded(st.expanded)
+          void ensureBody(st.expanded)
+        }
+      }
+      restored.current = true
+    })
+    return () => {
+      live = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Persist panel state whenever it changes (after the initial restore).
+  useEffect(() => {
+    if (!restored.current) return
+    window.cockpit.ui.set(uiKey, { open, labels: [...labelFilter], expanded })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, labelFilter, expanded])
 
   if (!isGitHub) return null
 

@@ -44,12 +44,13 @@ interface Persisted {
   /** One-time flags, e.g. whether we've already auto-installed status hooks. */
   flags: Record<string, boolean>
   /** Durable renderer UI state that must survive restarts (localStorage is
-   *  origin-scoped and unreliable across dev/packaged builds). */
-  uiState: { collapsedWorkspaces: string[] }
+   *  origin-scoped and unreliable across dev/packaged builds). A generic bag:
+   *  `collapsedWorkspaces`, `activeSessionId`, per-workspace issue panel state, etc. */
+  uiState: Record<string, unknown>
 }
 
 function empty(): Persisted {
-  return { sessions: [], archived: [], workspaces: [], flags: {}, uiState: { collapsedWorkspaces: [] } }
+  return { sessions: [], archived: [], workspaces: [], flags: {}, uiState: {} }
 }
 
 let cache: Persisted = empty()
@@ -114,10 +115,21 @@ export function saveWorkspaces(workspaces: Workspace[]): void {
 }
 
 export function getCollapsedWorkspaces(): string[] {
-  return cache.uiState?.collapsedWorkspaces ?? []
+  return (cache.uiState.collapsedWorkspaces as string[] | undefined) ?? []
 }
 
 export function saveCollapsedWorkspaces(ids: string[]): void {
-  cache.uiState = { ...cache.uiState, collapsedWorkspaces: ids }
+  cache.uiState.collapsedWorkspaces = ids
+  flush()
+}
+
+/** The full durable UI-state bag (read once by the renderer on mount). */
+export function getUiState(): Record<string, unknown> {
+  return cache.uiState
+}
+
+/** Set one durable UI-state key (merged into the bag). */
+export function setUiValue(key: string, value: unknown): void {
+  cache.uiState[key] = value
   flush()
 }

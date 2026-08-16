@@ -142,6 +142,10 @@ const api: CockpitApi = {
     get: () => ipcRenderer.invoke('settings:get'),
     update: (patch) => ipcRenderer.invoke('settings:update', patch)
   },
+  ui: {
+    get: () => ipcRenderer.invoke('ui:get'),
+    set: (key, value) => ipcRenderer.send('ui:set', key, value)
+  },
   updates: {
     status: () => ipcRenderer.invoke('updates:status'),
     check: () => ipcRenderer.invoke('updates:check'),

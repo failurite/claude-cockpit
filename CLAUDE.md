@@ -53,7 +53,11 @@ Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design. Key files
   `~/.claude/projects/*.jsonl`.
 - `src/main/monitor.ts` — `SystemMonitor`: samples system CPU/memory + Claude token
   throughput and pushes `SystemStats` to the renderer for the sidebar meters.
-- `src/main/store.ts` — JSON persistence (names, panes + browser tabs, workspaces, flags).
+- `src/main/store.ts` — JSON persistence (names, panes + browser tabs, workspaces,
+  flags, and a durable `uiState` bag — collapsed workspaces, active session,
+  per-workspace issue panel filter/expanded — via the `ui.get`/`ui.set` bridge; use
+  this, not renderer `localStorage`, for state that must survive restarts, since
+  `localStorage` is origin-scoped across dev vs packaged builds).
 - `src/preload/index.ts` — the `window.cockpit` bridge.
 - `src/renderer/src/` — React UI (`App.tsx`, `components/Sidebar.tsx`,
   `TerminalView.tsx`, `BrowserPanel.tsx`, `WorkspaceGit.tsx`, `LaunchDialog.tsx`,

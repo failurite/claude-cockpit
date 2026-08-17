@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Cockpit Mobile — hi-fi mockups</title>
+<style>
+  :root{
+    --page:#0a0b0e; --bezel:#050506; --screen:#14161b; --panel:#1a1d24;
+    --panel2:#21252e; --border:#2a2f39; --text:#d7dbe3; --muted:#8b93a3;
+    --faint:#5c6472; --green:#46d17f; --amber:#f0b23a; --blue:#5b9dff;
+    --accent:#5b9dff; --danger:#f0623a; --term:#7ee787;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1200px 800px at 30% -10%, #14171d, var(--page));
+    color:var(--text);font:14px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text",Segoe UI,Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;padding:40px 28px 80px}
+  h1{font-size:22px;font-weight:650;margin:0 0 4px}
+  .lede{color:var(--muted);max-width:760px;margin:0 0 34px}
+  .gallery{display:flex;flex-wrap:wrap;gap:40px 34px;align-items:flex-start}
+  .cap{color:var(--muted);font-size:12.5px;margin:10px 2px 0;text-align:center;letter-spacing:.2px}
+  .cap b{color:var(--text);font-weight:600}
+
+  /* device frames */
+  .phone{width:300px;background:var(--bezel);border-radius:46px;padding:11px;
+    box-shadow:0 30px 60px rgba(0,0,0,.55),inset 0 0 0 2px #1b1d22}
+  .phone .screen{height:640px}
+  .ipad{width:860px;background:var(--bezel);border-radius:34px;padding:16px;
+    box-shadow:0 34px 70px rgba(0,0,0,.55),inset 0 0 0 2px #1b1d22}
+  .ipad .screen{height:600px}
+  .screen{background:var(--screen);border-radius:34px;overflow:hidden;display:flex;flex-direction:column;position:relative}
+  .ipad .screen{border-radius:22px}
+  .island{position:absolute;top:9px;left:50%;transform:translateX(-50%);width:92px;height:24px;background:#000;border-radius:14px;z-index:5}
+
+  .statusbar{display:flex;justify-content:space-between;align-items:center;
+    padding:12px 22px 4px;font-size:12px;color:var(--text);font-weight:600}
+  .statusbar .r{display:flex;gap:6px;align-items:center;color:var(--muted)}
+
+  /* app chrome */
+  .appbar{display:flex;align-items:center;gap:10px;padding:8px 16px 10px}
+  .appbar .grow{flex:1}
+  .appbar .ttl{font-size:17px;font-weight:650}
+  .appbar .ico{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;
+    background:var(--panel);color:var(--muted);font-size:15px}
+  .badge{position:relative}
+  .badge::after{content:"3";position:absolute;top:-5px;right:-5px;background:var(--danger);color:#fff;
+    font-size:10px;font-weight:700;min-width:16px;height:16px;border-radius:9px;display:grid;place-items:center;padding:0 3px}
+  .back{color:var(--accent);font-size:15px;font-weight:500;display:flex;align-items:center;gap:2px}
+
+  .stats{display:flex;gap:14px;padding:0 18px 10px;color:var(--muted);font-size:11.5px}
+  .stats b{color:var(--text);font-weight:650}
+
+  .banner{margin:0 12px 10px;padding:9px 12px;border-radius:12px;font-size:12.5px;
+    background:rgba(240,178,58,.12);color:#f7c76a;border:1px solid rgba(240,178,58,.25);display:flex;gap:8px;align-items:center}
+
+  .scroll{flex:1;overflow:hidden;padding:0 12px}
+  .wsgroup{margin-bottom:14px}
+  .wshead{display:flex;align-items:center;gap:8px;padding:6px 6px 8px;color:var(--muted);font-size:11px;
+    text-transform:uppercase;letter-spacing:.7px;font-weight:700}
+  .wshead .chev{margin-left:auto;color:var(--faint)}
+  .srow{display:flex;align-items:center;gap:11px;background:var(--panel);border:1px solid var(--border);
+    border-radius:14px;padding:11px 12px;margin-bottom:8px}
+  .srow .body{flex:1;min-width:0}
+  .srow .nm{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .srow .mt{color:var(--muted);font-size:11.5px;margin-top:2px}
+  .srow.sel{border-color:var(--accent);background:linear-gradient(180deg,rgba(91,157,255,.10),var(--panel))}
+
+  .dot{width:9px;height:9px;border-radius:50%;flex:none;box-shadow:0 0 0 3px rgba(255,255,255,.03)}
+  .dot.work{background:var(--green);box-shadow:0 0 8px var(--green)}
+  .dot.wait{background:var(--amber);box-shadow:0 0 8px var(--amber)}
+  .dot.pause{background:var(--blue)}
+  .dot.idle{background:#4a505c}
+  .pill{font-size:10.5px;font-weight:700;border-radius:8px;padding:2px 7px;flex:none}
+  .pill.wait{color:#f7c76a;background:rgba(240,178,58,.14)}
+  .pill.pause{color:#9cc2ff;background:rgba(91,157,255,.14)}
+
+  /* tab bar */
+  .tabbar{display:flex;justify-content:space-around;align-items:center;padding:8px 6px 14px;border-top:1px solid var(--border);background:#111319}
+  .tab{display:flex;flex-direction:column;align-items:center;gap:2px;color:var(--faint);font-size:10px;font-weight:600}
+  .tab .g{font-size:18px;line-height:1}
+  .tab.on{color:var(--accent)}
+  .fab{width:40px;height:40px;border-radius:12px;background:var(--accent);color:#04122b;display:grid;place-items:center;font-size:22px;font-weight:700;margin-top:-6px}
+
+  /* segmented */
+  .seg{display:flex;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:3px;margin:0 12px 12px}
+  .seg .s{flex:1;text-align:center;font-size:12.5px;font-weight:600;color:var(--muted);padding:7px 0;border-radius:9px}
+  .seg .s.on{background:var(--panel2);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.4)}
+
+  /* terminal */
+  .term{flex:1;margin:0 12px;background:#0e1014;border:1px solid var(--border);border-radius:12px;padding:12px;
+    font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;color:#c9cdd6;overflow:hidden}
+  .term .p{color:#6ee7ff}.term .ok{color:var(--term)}.term .mut{color:var(--faint)}
+  .cursor{display:inline-block;width:7px;height:14px;background:var(--term);vertical-align:-2px;animation:bl 1s steps(1) infinite}
+  @keyframes bl{50%{opacity:0}}
+  .keyrow{display:flex;gap:6px;padding:10px 12px 6px;overflow:hidden}
+  .keycap{background:var(--panel2);border:1px solid var(--border);border-radius:8px;color:var(--muted);
+    font-size:12px;padding:6px 9px;font-weight:600}
+  .inputbar{display:flex;align-items:center;gap:9px;padding:6px 12px 14px}
+  .inputbar .field{flex:1;background:var(--panel);border:1px solid var(--border);border-radius:22px;
+    padding:11px 14px;color:var(--muted);font-size:13px}
+  .mic,.send{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;font-size:17px;flex:none}
+  .mic{background:var(--panel2);border:1px solid var(--border)}
+  .send{background:var(--accent);color:#04122b}
+
+  /* voice overlay */
+  .voice{position:absolute;inset:0;background:rgba(10,11,14,.86);backdrop-filter:blur(4px);
+    display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:38px;gap:14px;z-index:8}
+  .rec{display:flex;align-items:center;gap:8px;color:#ff7a6b;font-weight:700;font-size:13px}
+  .rec .r{width:11px;height:11px;border-radius:50%;background:#ff5a48;box-shadow:0 0 10px #ff5a48;animation:bl 1.1s steps(1) infinite}
+  .wave{display:flex;align-items:center;gap:4px;height:56px}
+  .wave i{width:5px;border-radius:3px;background:linear-gradient(var(--accent),#8ec0ff);animation:w 1s ease-in-out infinite}
+  @keyframes w{0%,100%{height:10px}50%{height:46px}}
+  .micbig{width:74px;height:74px;border-radius:50%;background:var(--accent);color:#04122b;display:grid;place-items:center;font-size:30px;
+    box-shadow:0 0 0 12px rgba(91,157,255,.18),0 0 0 24px rgba(91,157,255,.08)}
+  .hint{color:var(--muted);font-size:12px}
+
+  /* browser / app view */
+  .bbar{display:flex;align-items:center;gap:8px;margin:0 12px 10px}
+  .toggle{display:flex;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:3px}
+  .toggle .t{font-size:11.5px;font-weight:700;color:var(--muted);padding:5px 11px;border-radius:7px}
+  .toggle .t.on{background:var(--accent);color:#04122b}
+  .url{flex:1;background:var(--panel);border:1px solid var(--border);border-radius:9px;color:var(--muted);
+    font-size:11.5px;padding:6px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .appframe{flex:1;margin:0 12px;border:1px solid var(--border);border-radius:14px;overflow:hidden;background:#0f1319;display:flex;flex-direction:column}
+  .brcontrols{display:flex;gap:20px;justify-content:center;color:var(--faint);padding:10px;font-size:16px}
+
+  /* fake house app */
+  .house{flex:1;background:#0f1216;color:#e8eef7;display:flex;flex-direction:column;font-size:13px}
+  .house .hh{display:flex;align-items:center;gap:8px;padding:12px 14px;background:#141a22;border-bottom:1px solid #1e2732;font-weight:700}
+  .house .hh .sp{margin-left:auto;color:#7f8aa0;font-weight:500;font-size:12px}
+  .house .pad{padding:14px;overflow:hidden}
+  .house .photo{height:112px;border-radius:12px;background:
+    linear-gradient(135deg,#2b3647,#151b24),repeating-linear-gradient(115deg,rgba(255,255,255,.05) 0 8px,transparent 8px 20px);
+    border:1px solid #24303e;display:flex;align-items:flex-end;padding:10px}
+  .house .tag{background:rgba(240,178,58,.16);color:#f7c76a;font-size:11px;font-weight:700;border-radius:8px;padding:3px 8px}
+  .house h3{margin:12px 0 4px;font-size:16px}
+  .house .row{display:flex;justify-content:space-between;color:#8f9bb0;font-size:12.5px;padding:7px 0;border-bottom:1px solid #1b232e}
+  .house .row b{color:#e8eef7;font-weight:600}
+  .house .cta{margin-top:14px;background:#3f7bd6;color:#fff;text-align:center;font-weight:700;padding:11px;border-radius:11px}
+
+  /* continue / new work */
+  .sec{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.7px;font-weight:700;margin:14px 6px 8px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:12px;margin-bottom:10px}
+  .card .nm{font-weight:600}
+  .card .q{color:var(--muted);font-size:12px;margin:4px 0 10px;font-style:italic}
+  .btn{border-radius:11px;text-align:center;font-weight:700;padding:10px;font-size:13.5px}
+  .btn.primary{background:var(--accent);color:#04122b}
+  .btn.ghost{background:var(--panel2);border:1px solid var(--border);color:var(--text)}
+  .btn.wide{display:block;margin:2px 0}
+  .btn.big{background:var(--green);color:#05210f}
+  .field2{background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:11px 12px;color:var(--text);margin-bottom:12px}
+  .field2 .k{color:var(--muted);font-size:11px;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px}
+  .field2 .v{display:flex;justify-content:space-between;align-items:center}
+  .radio{display:flex;gap:8px;align-items:center;padding:9px 0;color:var(--text)}
+  .radio .o{width:16px;height:16px;border-radius:50%;border:2px solid var(--faint)}
+  .radio .o.on{border-color:var(--accent);box-shadow:inset 0 0 0 3px var(--accent)}
+  .toast{margin:0 12px 14px;background:var(--panel2);border:1px solid var(--border);border-radius:12px;
+    padding:10px 12px;display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted)}
+  .toast b{color:var(--text)}
+  .toast .u{margin-left:auto;color:var(--accent);font-weight:700}
+
+  /* ipad two-pane */
+  .rail{width:250px;border-right:1px solid var(--border);background:#111319;display:flex;flex-direction:column;padding:10px}
+  .rail .rl{margin-top:auto;display:flex;flex-direction:column;gap:6px}
+  .detail{flex:1;display:flex;flex-direction:column;min-width:0}
+  .dhead{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border)}
+  .split{flex:1;display:flex;min-height:0}
+  .split .col{flex:1;display:flex;flex-direction:column;min-width:0;padding:12px}
+  .split .col+.col{border-left:1px solid var(--border)}
+  .lbl{color:var(--faint);font-size:10.5px;text-transform:uppercase;letter-spacing:.7px;font-weight:700;margin:0 2px 8px}
+</style>
+</head>
+<body>
+  <h1>Cockpit Mobile — hi-fi mockups</h1>
+  <p class="lede">Same features as desktop Cockpit, re-oriented for touch. All work runs on the Mac; the phone is a
+    thin LAN client. Shows: sessions + status, renewal→continue, terminal with voice input, the house-app view
+    (Live vs Mirror), new work, and the iPad two-pane split.</p>
+
+  <div class="gallery">
+
+    <!-- 1. iPhone Sessions -->
+    <div>
+      <div class="phone"><div class="screen">
+        <div class="island"></div>
+        <div class="statusbar"><span>9:41</span><span class="r">􀙇 􀋨 100%</span></div>
+        <div class="appbar">
+          <div class="ttl grow">Cockpit</div>
+          <div class="ico badge">🔔</div><div class="ico">⚙︎</div>
+        </div>
+        <div class="stats"><span>CPU <b>34%</b></span><span>MEM <b>61%</b></span><span>~<b>48k</b> tok/m</span></div>
+        <div class="banner">⏳ Limit resets <b style="margin:0 3px">4:30p</b> · 2h 11m</div>
+        <div class="scroll">
+          <div class="wsgroup">
+            <div class="wshead">house <span class="chev">▾</span></div>
+            <div class="srow sel"><span class="dot work"></span><div class="body"><div class="nm">Sheathing horizontal</div><div class="mt">#19 · opus-5 · 12.3k tok</div></div></div>
+            <div class="srow"><span class="dot wait"></span><div class="body"><div class="nm">Fix pull rebase</div><div class="mt">#22 · opus-5</div></div><span class="pill wait">needs you</span></div>
+            <div class="srow"><span class="dot pause"></span><div class="body"><div class="nm">Refactor worktrees</div><div class="mt">#30 · queued for 4:30p</div></div><span class="pill pause">no tokens</span></div>
+          </div>
+          <div class="wsgroup">
+            <div class="wshead">claude-cockpit <span class="chev">▾</span></div>
+            <div class="srow"><span class="dot idle"></span><div class="body"><div class="nm">Cockpit Dev</div><div class="mt">opus-5[1m] · 192k tok</div></div></div>
+          </div>
+        </div>
+        <div class="tabbar">
+          <div class="tab on"><span class="g">▤</span>Sessions</div>
+          <div class="tab"><span class="g">🔔</span>Activity</div>
+          <div class="fab">＋</div>
+          <div class="tab"><span class="g">⚙︎</span>Settings</div>
+        </div>
+      </div></div>
+      <div class="cap"><b>1 · Sessions</b> — status at a glance + renewal banner</div>
+    </div>
+
+    <!-- 2. iPhone Terminal -->
+    <div>
+      <div class="phone"><div class="screen">
+        <div class="island"></div>
+        <div class="statusbar"><span>9:41</span><span class="r">􀙇 100%</span></div>
+        <div class="appbar">
+          <div class="back">‹ Sessions</div>
+          <div class="grow" style="text-align:center"><div class="ttl" style="font-size:15px">Sheathing…</div><div style="font-size:11px;color:var(--muted)"><span class="dot work" style="display:inline-block;vertical-align:middle;margin-right:5px"></span>working · opus-5 · #19</div></div>
+          <div class="ico">⋯</div>
+        </div>
+        <div class="seg"><div class="s on">Terminal</div><div class="s">App</div><div class="s">Info</div></div>
+        <div class="term">
+          <div><span class="p">$</span> npm test</div>
+          <div class="ok">✓ 42 passed</div>
+          <div class="mut">›_ analyzing sheathing layout…</div>
+          <div>Comparing stud spacing to the spec in</div>
+          <div>the issue. Two options for the corner<span class="cursor"></span></div>
+        </div>
+        <div class="keyrow"><span class="keycap">Esc</span><span class="keycap">Ctrl</span><span class="keycap">Tab</span><span class="keycap">↑</span><span class="keycap">↓</span><span class="keycap">←</span><span class="keycap">→</span><span class="keycap">⏎</span></div>
+        <div class="inputbar"><div class="field">message…</div><div class="mic">🎤</div><div class="send">➤</div></div>
+      </div></div>
+      <div class="cap"><b>2 · Terminal</b> — watch + type, with the TUI key row</div>
+    </div>
+
+    <!-- 3. iPhone Voice -->
+    <div>
+      <div class="phone"><div class="screen">
+        <div class="island"></div>
+        <div class="statusbar"><span>9:41</span><span class="r">􀙇 100%</span></div>
+        <div class="appbar">
+          <div class="back">‹ Sessions</div>
+          <div class="grow" style="text-align:center"><div class="ttl" style="font-size:15px">Sheathing…</div></div>
+          <div class="ico">⋯</div>
+        </div>
+        <div class="seg"><div class="s on">Terminal</div><div class="s">App</div><div class="s">Info</div></div>
+        <div class="term" style="opacity:.35">
+          <div><span class="p">$</span> npm test</div><div class="ok">✓ 42 passed</div>
+        </div>
+        <div class="voice">
+          <div class="rec"><span class="r"></span> REC 0:04</div>
+          <div class="wave">
+            <i style="animation-delay:0s"></i><i style="animation-delay:.1s"></i><i style="animation-delay:.2s"></i>
+            <i style="animation-delay:.3s"></i><i style="animation-delay:.15s"></i><i style="animation-delay:.25s"></i>
+            <i style="animation-delay:.05s"></i><i style="animation-delay:.3s"></i><i style="animation-delay:.1s"></i>
+            <i style="animation-delay:.2s"></i><i style="animation-delay:0s"></i>
+          </div>
+          <div class="micbig">🎤</div>
+          <div class="hint">release to transcribe · ◀ slide to cancel</div>
+          <div class="hint" style="color:var(--faint)">Whisper · on your Mac</div>
+        </div>
+      </div></div>
+      <div class="cap"><b>3 · Voice</b> — hold to talk → local Whisper → text</div>
+    </div>
+
+    <!-- 4. iPhone App (house, Live) -->
+    <div>
+      <div class="phone"><div class="screen">
+        <div class="island"></div>
+        <div class="statusbar"><span>9:41</span><span class="r">􀙇 100%</span></div>
+        <div class="appbar">
+          <div class="back">‹</div>
+          <div class="grow" style="text-align:center"><div class="ttl" style="font-size:15px">Sheathing…</div></div>
+          <div class="ico">⋯</div>
+        </div>
+        <div class="seg"><div class="s">Terminal</div><div class="s on">App</div><div class="s">Info</div></div>
+        <div class="bbar">
+          <div class="toggle"><span class="t on">Live</span><span class="t">Mirror</span></div>
+          <div class="url">house · localhost:5173</div><div class="ico" style="width:28px;height:28px">⟳</div>
+        </div>
+        <div class="appframe">
+          <div class="house">
+            <div class="hh">🏠 House <span class="sp">North wall</span></div>
+            <div class="pad">
+              <div class="photo"><span class="tag">needs review</span></div>
+              <h3>Sheathing — horizontal</h3>
+              <div class="row"><span>Orientation</span><b>Horizontal</b></div>
+              <div class="row"><span>Stud spacing</span><b>16" o.c.</b></div>
+              <div class="row"><span>Panel</span><b>7/16" OSB</b></div>
+              <div class="cta">Mark inspected ✓</div>
+            </div>
+          </div>
+        </div>
+        <div class="brControls brcontrols">⤺ &nbsp; ⌂ &nbsp; ⟳ &nbsp; ⇧</div>
+      </div></div>
+      <div class="cap"><b>4 · App view</b> — house in a real phone viewport (Live), tap/scroll/type</div>
+    </div>
+
+    <!-- 5. iPhone Continue -->
+    <div>
+      <div class="phone"><div class="screen">
+        <div class="island"></div>
+        <div class="statusbar"><span>9:41</span><span class="r">􀙇 100%</span></div>
+        <div class="appbar"><div class="back">‹ Activity</div><div class="grow ttl" style="font-size:16px;text-align:center">Ready to continue</div><div style="width:30px"></div></div>
+        <div class="toast">✅ Limit reset at <b>4:30p</b>. 2 sessions were waiting.</div>
+        <div class="scroll">
+          <div class="sec">Paused — out of tokens</div>
+          <div class="card">
+            <div class="nm">⌛ Sheathing horizontal · #19</div>
+            <div class="q">last: "…continue from plan step 3 of 5"</div>
+            <div class="btn primary">Continue ▶</div>
+          </div>
+          <div class="card">
+            <div class="nm">⌛ Refactor worktrees · #30</div>
+            <div class="q">last: "extract IPC handlers into services"</div>
+            <div class="btn primary">Continue ▶</div>
+          </div>
+          <div class="btn ghost wide">▶▶ Continue all</div>
+          <div class="sec">Or</div>
+          <div class="btn big wide">＋ Start new work</div>
+        </div>
+        <div class="tabbar">
+          <div class="tab"><span class="g">▤</span>Sessions</div>
+          <div class="tab on"><span class="g">🔔</span>Activity</div>
+          <div class="fab">＋</div>
+          <div class="tab"><span class="g">⚙︎</span>Settings</div>
+        </div>
+      </div></div>
+      <div class="cap"><b>5 · Renewal → Continue</b> — pushed when tokens return</div>
+    </div>
+
+    <!-- 6. iPhone New work -->
+    <div>
+      <div class="phone"><div class="screen">
+        <div class="island"></div>
+        <div class="statusbar"><span>9:41</span><span class="r">􀙇 100%</span></div>
+        <div class="appbar"><div class="back" style="color:var(--muted)">✕</div><div class="grow ttl" style="font-size:16px;text-align:center">New work</div><div class="back">Start →</div></div>
+        <div class="scroll">
+          <div class="field2"><div class="k">Workspace</div><div class="v"><span>house</span><span style="color:var(--muted)">▾</span></div></div>
+          <div class="field2"><div class="k">Model</div><div class="v"><span>Opus 5 · 1M</span><span style="color:var(--muted)">▾</span></div></div>
+          <div class="field2"><div class="k">From</div>
+            <div class="radio"><span class="o"></span> Blank session</div>
+            <div class="radio"><span class="o on"></span> GitHub issue &nbsp;<span style="color:var(--muted)">[ #… ▾ ]</span></div>
+          </div>
+          <div class="field2" style="min-height:96px"><div class="k">Kickoff prompt</div>
+            <div style="color:var(--muted);font-size:13px">Tap 🎤 and describe the task…</div>
+          </div>
+          <div class="inputbar" style="padding:0"><div class="field">dictate the task…</div><div class="mic">🎤</div></div>
+        </div>
+      </div></div>
+      <div class="cap"><b>6 · New work</b> — kick off / from an issue, dictate the prompt</div>
+    </div>
+
+    <!-- 7. iPad split -->
+    <div>
+      <div class="ipad"><div class="screen">
+        <div class="statusbar"><span>9:41 &nbsp;·&nbsp; Cockpit</span><span class="r">CPU 34% &nbsp; MEM 61% &nbsp; ~48k tok/m &nbsp;·&nbsp; ⏳ 4:30p &nbsp; 🔔 &nbsp; ⚙︎</span></div>
+        <div style="flex:1;display:flex;min-height:0">
+          <div class="rail">
+            <div class="wshead" style="padding-top:0">house</div>
+            <div class="srow sel" style="padding:9px 10px"><span class="dot work"></span><div class="body"><div class="nm" style="font-size:13px">Sheathing horizontal</div><div class="mt">#19 · opus-5</div></div></div>
+            <div class="srow" style="padding:9px 10px"><span class="dot wait"></span><div class="body"><div class="nm" style="font-size:13px">Fix pull rebase</div><div class="mt">#22</div></div></div>
+            <div class="srow" style="padding:9px 10px"><span class="dot pause"></span><div class="body"><div class="nm" style="font-size:13px">Refactor worktrees</div><div class="mt">#30 · 4:30p</div></div></div>
+            <div class="wshead">claude-cockpit</div>
+            <div class="srow" style="padding:9px 10px"><span class="dot idle"></span><div class="body"><div class="nm" style="font-size:13px">Cockpit Dev</div><div class="mt">opus-5[1m]</div></div></div>
+            <div class="rl">
+              <div class="btn ghost">＋ New work</div>
+              <div class="btn ghost">🔔 Activity</div>
+            </div>
+          </div>
+          <div class="detail">
+            <div class="dhead">
+              <span class="dot work"></span>
+              <div><div style="font-weight:650">Sheathing horizontal &nbsp;<span style="color:var(--muted);font-weight:500;font-size:12px">#19 · opus-5</span></div></div>
+              <div style="margin-left:auto" class="seg" ><div class="s on" style="padding:5px 12px">Terminal</div><div class="s" style="padding:5px 12px">App</div><div class="s" style="padding:5px 12px">Info</div></div>
+              <div class="ico" style="margin-left:8px">⋯</div>
+            </div>
+            <div class="split">
+              <div class="col">
+                <div class="lbl">Terminal</div>
+                <div class="term" style="margin:0">
+                  <div><span class="p">$</span> npm test</div>
+                  <div class="ok">✓ 42 passed</div>
+                  <div class="mut">›_ analyzing sheathing layout…</div>
+                  <div>Two options for the corner<span class="cursor"></span></div>
+                </div>
+                <div class="keyrow" style="padding:8px 0 4px"><span class="keycap">Esc</span><span class="keycap">Ctrl</span><span class="keycap">Tab</span><span class="keycap">↑</span><span class="keycap">↓</span><span class="keycap">←</span><span class="keycap">→</span></div>
+                <div class="inputbar" style="padding:2px 0 0"><div class="field">message…</div><div class="mic">🎤</div><div class="send">➤</div></div>
+              </div>
+              <div class="col">
+                <div class="lbl">App — house</div>
+                <div class="bbar" style="margin:0 0 10px"><div class="toggle"><span class="t on">Live</span><span class="t">Mirror</span></div><div class="url">localhost:5173</div><div class="ico" style="width:28px;height:28px">⟳</div></div>
+                <div class="appframe" style="margin:0">
+                  <div class="house">
+                    <div class="hh">🏠 House <span class="sp">North wall</span></div>
+                    <div class="pad">
+                      <div class="photo"><span class="tag">needs review</span></div>
+                      <h3>Sheathing — horizontal</h3>
+                      <div class="row"><span>Stud spacing</span><b>16" o.c.</b></div>
+                      <div class="row"><span>Panel</span><b>7/16" OSB</b></div>
+                      <div class="cta">Mark inspected ✓</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div></div>
+      <div class="cap"><b>7 · iPad</b> — two-pane: sessions rail + Terminal &amp; App side-by-side</div>
+    </div>
+
+  </div>
+</body>
+</html>

@@ -12,6 +12,7 @@ import { startIngestServer, type IngestServer } from './ingest.js'
 import { BrowserManager } from './browser.js'
 import { startBrowserRpc, type BrowserRpcServer } from './browser-rpc.js'
 import { startSessionsRpc, type SessionsRpcServer } from './sessions-rpc.js'
+import { startGateway, type Gateway } from './gateway.js'
 import { gitStatus, gitPush, gitPull, gitClone } from './git.js'
 import {
   ghAvailable,
@@ -35,7 +36,9 @@ import {
   getCollapsedWorkspaces,
   saveCollapsedWorkspaces,
   getUiState,
-  setUiValue
+  setUiValue,
+  getGatewayToken,
+  setGatewayToken
 } from './store.js'
 import { hookStatus, installHooks, uninstallHooks } from './hooks-install.js'
 import { initUpdater } from './updater.js'
@@ -55,6 +58,8 @@ const INGEST_PORT = 47615
 const BROWSER_RPC_PORT = 47616
 /** Fixed sessions-RPC port (cross-session visibility); same frozen-env rationale. */
 const SESSIONS_RPC_PORT = 47617
+/** Fixed LAN gateway port for the phone client (bound to all interfaces). */
+const GATEWAY_PORT = 47618
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 /** Project root (out/main/index.js -> ../..). In dev this is the repo; packaged it's the bundle. */
@@ -76,6 +81,7 @@ let browserMgr: BrowserManager
 let browserRpc: BrowserRpcServer
 let sessionsRpc: SessionsRpcServer
 let monitor: SystemMonitor | null = null
+let gateway: Gateway | null = null
 /** Path to a locally-built app swapped in by `update-app`, awaiting a restart to apply. */
 let stagedUpdatePath: string | null = null
 /** Set true only on the launch where we auto-installed hooks (for the one-time notice). */
@@ -274,6 +280,21 @@ async function bootstrap(): Promise<void> {
     }
   })
   monitor.start()
+
+  // LAN gateway for the phone/tablet client (read-only dashboard for now). Bound
+  // to all interfaces but gated by a persistent random token.
+  let gwToken = getGatewayToken()
+  if (!gwToken) {
+    gwToken = randomUUID()
+    setGatewayToken(gwToken)
+  }
+  try {
+    gateway = await startGateway({ manager, monitor, token: gwToken, preferredPort: GATEWAY_PORT })
+    console.log(`[cockpit] phone gateway on ${gateway.url}`)
+  } catch (e) {
+    console.error('[cockpit] phone gateway failed to start:', e)
+  }
+
   browserMgr.on('tabs', (paneId: string, tabs: unknown) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('browser:tabs', paneId, tabs)
@@ -382,6 +403,11 @@ async function bootstrap(): Promise<void> {
   // ---- durable UI state (selections, filters, panel open state) ----
   ipcMain.handle('ui:get', () => getUiState())
   ipcMain.on('ui:set', (_e, key: string, value: unknown) => setUiValue(key, value))
+
+  // ---- LAN phone gateway ----
+  ipcMain.handle('gateway:info', () =>
+    gateway ? { url: gateway.url, token: gateway.token, ip: gateway.ip, port: gateway.port } : null
+  )
   ipcMain.handle('dialog:pick-folder', () => pickFolder())
   ipcMain.handle('workspaces:list', () => listAllWorkspaces())
   ipcMain.handle('workspaces:save', (_e, ws: Workspace) => upsertWorkspace(ws))
@@ -973,6 +999,7 @@ app.on('window-all-closed', () => {
   ingest?.close()
   browserRpc?.close()
   sessionsRpc?.close()
+  gateway?.close()
   if (process.platform !== 'darwin') app.quit()
 })
 
@@ -985,4 +1012,5 @@ app.on('before-quit', () => {
   ingest?.close()
   browserRpc?.close()
   sessionsRpc?.close()
+  gateway?.close()
 })

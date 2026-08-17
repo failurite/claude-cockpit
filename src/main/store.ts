@@ -47,6 +47,9 @@ interface Persisted {
    *  origin-scoped and unreliable across dev/packaged builds). A generic bag:
    *  `collapsedWorkspaces`, `activeSessionId`, per-workspace issue panel state, etc. */
   uiState: Record<string, unknown>
+  /** Persistent token the LAN phone gateway requires on every request, so the
+   *  phone doesn't need re-pairing after a restart. */
+  gatewayToken?: string
 }
 
 function empty(): Persisted {
@@ -131,5 +134,14 @@ export function getUiState(): Record<string, unknown> {
 /** Set one durable UI-state key (merged into the bag). */
 export function setUiValue(key: string, value: unknown): void {
   cache.uiState[key] = value
+  flush()
+}
+
+export function getGatewayToken(): string | undefined {
+  return cache.gatewayToken
+}
+
+export function setGatewayToken(token: string): void {
+  cache.gatewayToken = token
   flush()
 }

@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react'
-import type { AppInfo, AppSettings, HookInstallState, UpdateStatus } from '../../../shared/types'
+import type {
+  AppInfo,
+  AppSettings,
+  GatewayInfo,
+  HookInstallState,
+  UpdateStatus
+} from '../../../shared/types'
 
 /** One-line summary of the current update status for the Settings UI. */
 function updateLabel(s: UpdateStatus): string {
@@ -49,12 +55,14 @@ export function SettingsPanel({
   const [tmuxSessions, setTmuxSessions] = useState<string[]>([])
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [update, setUpdate] = useState<UpdateStatus | null>(null)
+  const [gwInfo, setGwInfo] = useState<GatewayInfo | null>(null)
 
   useEffect(() => {
     window.cockpit.tmux.available().then(setTmuxAvailable)
     window.cockpit.tmux.list().then(setTmuxSessions)
     window.cockpit.settings.get().then(setSettings)
     window.cockpit.updates.status().then(setUpdate)
+    window.cockpit.gateway.info().then(setGwInfo)
     return window.cockpit.updates.onStatus(setUpdate)
   }, [])
 
@@ -219,6 +227,31 @@ export function SettingsPanel({
           </div>
           {update && updateLabel(update) && (
             <p className="settings-note">{updateLabel(update)}</p>
+          )}
+        </div>
+
+        <div className="field">
+          <span>Phone access</span>
+          <p className="settings-note">
+            Open this URL on a phone/tablet on the same Wi-Fi for a live, read-only view of your
+            sessions. The token in the link is your password — anyone with it can see your sessions,
+            so don’t share it.
+          </p>
+          {gwInfo?.ip ? (
+            <>
+              <p className="settings-note mono" style={{ wordBreak: 'break-all' }}>
+                {gwInfo.url}
+              </p>
+              <div className="field-row">
+                <button className="btn" onClick={() => navigator.clipboard?.writeText(gwInfo.url)}>
+                  Copy link
+                </button>
+              </div>
+            </>
+          ) : (
+            <p className="settings-note mono">
+              {gwInfo ? 'No LAN address detected (are you on Wi-Fi?).' : 'Gateway not running.'}
+            </p>
           )}
         </div>
 

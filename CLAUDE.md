@@ -30,6 +30,11 @@ Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design. Key files
 - `src/main/browser-rpc.ts` — localhost RPC (:47616) the browser MCP shim calls.
 - `src/main/sessions-rpc.ts` — localhost RPC (:47617) the cross-session MCP shim
   calls: list sibling sessions / read another session's transcript digest.
+- `src/main/gateway.ts` — LAN phone/tablet gateway (`:47618`, bound to all
+  interfaces, token-gated): serves the mobile client and streams live session +
+  system-stat updates over Server-Sent Events. Read-only for now (see
+  `docs/mobile/PLAN.md`). `src/main/mobile-client.ts` is the self-contained mobile
+  web app it serves (embedded as a string — no build step).
 - `src/main/git.ts` — git status / push / pull for workspace dirs (exports `runGit`).
 - `src/main/issues.ts` — gh CLI wrapper: list/view/close issues, list repo labels,
   create an issue (`--body-file`), and upload a pasted image to GitHub's
@@ -87,6 +92,7 @@ npm run typecheck     # tsc on main+preload and renderer
 npm run build         # bundles into out/
 npx electron scripts/pty-smoke.cjs   # native pty loads → PTY_OUTPUT:"pty-ok"
 npx electron scripts/webview-cdp-smoke.cjs   # embedded-browser control → SMOKE_RESULT: PASS
+node scripts/gateway-smoke.mjs               # LAN phone gateway serves + token-gates → SMOKE_RESULT: PASS
 ```
 
 ## How "rebuild & relaunch" works

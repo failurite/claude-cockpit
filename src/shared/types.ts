@@ -460,6 +460,10 @@ export interface CockpitApi {
     get(): Promise<Record<string, unknown>>
     set(key: string, value: unknown): void
   }
+  /** LAN phone/tablet gateway — the URL (with token) to open on a phone. */
+  gateway: {
+    info(): Promise<GatewayInfo | null>
+  }
   /** Auto-update (electron-updater) against the GitHub Releases feed. */
   updates: {
     /** The latest known status (no network call). */
@@ -482,6 +486,14 @@ export interface CockpitApi {
     /** Fires when a locally-built update has just been staged and is ready to apply. */
     onStaged(cb: () => void): () => void
   }
+}
+
+/** Connection info for the LAN phone gateway (shown in Settings → Phone access). */
+export interface GatewayInfo {
+  url: string
+  token: string
+  ip: string | null
+  port: number
 }
 
 export interface AppSettings {

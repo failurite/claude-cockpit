@@ -13,6 +13,7 @@ import { BrowserManager } from './browser.js'
 import { startBrowserRpc, type BrowserRpcServer } from './browser-rpc.js'
 import { startSessionsRpc, type SessionsRpcServer } from './sessions-rpc.js'
 import { startGateway, type Gateway } from './gateway.js'
+import { claudeVersion } from './claude-version.js'
 import { gitStatus, gitPush, gitPull, gitClone } from './git.js'
 import {
   ghAvailable,
@@ -313,6 +314,18 @@ async function bootstrap(): Promise<void> {
     killAllCockpitSessions() // sweep any tmux the dev session left behind
     return listCockpitSessions()
   })
+  // Bulk relaunch so every session picks up a newly-installed `claude` (a live
+  // session keeps running the build it launched with). Re-query the version first
+  // so "outdated" is judged against what's actually on disk right now.
+  ipcMain.handle('sessions:restart-all', async () => {
+    const version = await claudeVersion(true)
+    return { ...manager.restartMany({ onlyOutdated: false, version }), version }
+  })
+  ipcMain.handle('sessions:restart-outdated', async () => {
+    const version = await claudeVersion(true)
+    return { ...manager.restartMany({ onlyOutdated: true, version }), version }
+  })
+  ipcMain.handle('claude:version', () => claudeVersion(true))
   ipcMain.handle('sessions:rename', (_e, id: string, name: string) => manager.rename(id, name))
   ipcMain.on('sessions:set-model', (_e, id: string, arg: string) => manager.setModel(id, arg))
   ipcMain.handle('sessions:archive', (_e, id: string) => {
@@ -981,6 +994,9 @@ app.whenReady().then(async () => {
   // so main-process tools (gh, git, tmux, npm) resolve. Must run before anything
   // shells out (git status, gh issues, tmux probe).
   ensureUserPath()
+  // Learn the installed `claude` version before any pane spawns, so each session
+  // is stamped with the build it actually launched with.
+  await claudeVersion(true)
   // Dock icon (macOS dev) — packaged builds get it from the bundle.
   if (process.platform === 'darwin' && app.dock) {
     const img = nativeImage.createFromPath(ICON_PNG)

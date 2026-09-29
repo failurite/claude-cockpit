@@ -17,6 +17,8 @@ export interface PersistedSession {
   options: SessionOptions
   /** tmux session name backing this pane, so restore re-attaches the live process (null / absent = none). */
   tmuxSession?: string | null
+  /** `claude --version` this pane's process launched with (re-attach keeps the old build). */
+  claudeVersion?: string | null
   /** Embedded-browser tabs (URLs) to reopen on restore; logins persist via the profile. */
   browserTabs?: { url: string; active: boolean }[]
   /** The GitHub issue this session is dedicated to (restores the mapping + worktree cwd). */

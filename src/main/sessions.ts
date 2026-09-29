@@ -36,6 +36,7 @@ import {
   TMUX_PREFIX
 } from './tmux.js'
 import { buildShellInvocation, quoteArg, quotePath } from './platform.js'
+import { cachedClaudeVersion } from './claude-version.js'
 import type { IssueRef } from '../shared/types.js'
 import { COCKPIT_WORKSPACE_ID } from '../shared/types.js'
 
@@ -201,6 +202,7 @@ export class SessionManager extends EventEmitter {
       options: p.session.options,
       // Persist the tmux name so restore re-attaches the same live process.
       tmuxSession: p.session.tmuxSession,
+      claudeVersion: p.session.claudeVersion,
       issue: p.session.issue,
       // Drop blank tabs so we don't restore empty about:blank panes.
       browserTabs: (this.browser.getTabs?.(p.session.id) ?? []).filter(
@@ -234,7 +236,8 @@ export class SessionManager extends EventEmitter {
         // Re-attach the same tmux session if it's still alive (process persists);
         // if it's gone, attach-or-create makes a fresh one and --resume restores
         // the conversation.
-        tmuxSession: s.tmuxSession ?? null
+        tmuxSession: s.tmuxSession ?? null,
+        claudeVersion: s.claudeVersion ?? null
       })
       // Reopen this pane's embedded-browser tabs (cookies/logins persist via the profile).
       if (s.browserTabs?.length) this.browser.restoreTabs?.(session.id, s.browserTabs)
@@ -273,6 +276,8 @@ export class SessionManager extends EventEmitter {
     initialPrompt?: string
     /** Persisted tmux session name to re-attach on restore (null = mint a fresh one). */
     tmuxSession?: string | null
+    /** Persisted `claude --version` (carried on restore — a re-attach keeps the old build). */
+    claudeVersion?: string | null
   }): TerminalSession {
     const cwd = resolveSpawnDir(opts?.cwd)
     const command = opts?.command || 'claude'
@@ -379,7 +384,16 @@ export class SessionManager extends EventEmitter {
       usingChrome: false,
       chromeActivity: null,
       lastActivity: reattaching ? 're-attached' : 'launching',
-      updatedAt: Date.now()
+      updatedAt: Date.now(),
+      // Re-attaching keeps the ALREADY-RUNNING claude, so its version is whatever
+      // it launched with (carried through persistence). A genuinely new process
+      // runs the installed build.
+      claudeVersion:
+        command === 'claude'
+          ? reattaching
+            ? (opts?.claudeVersion ?? null)
+            : cachedClaudeVersion()
+          : null
     }
     const pane: Pane = { session, proc, buffer: '' }
     this.panes.set(id, pane)
@@ -558,12 +572,43 @@ export class SessionManager extends EventEmitter {
       usingChrome: false,
       chromeActivity: null,
       lastActivity: 'restarting',
-      updatedAt: Date.now()
+      updatedAt: Date.now(),
+      // A restart always spawns a genuinely fresh claude (tmux is killed above),
+      // so it picks up the installed build.
+      claudeVersion: cachedClaudeVersion()
     })
     this.emit('reset', id) // tell the renderer to clear the now-stale terminal view
     this.emitSessions()
     this.persist()
     return s
+  }
+
+  /**
+   * Restart every restartable claude session (`onlyOutdated` limits it to those
+   * whose running build differs from `version`). Exists because sessions are
+   * long-running processes: updating the `claude` CLI on disk does NOT change a
+   * live session, only a relaunch does. Unknown versions (sessions from before we
+   * tracked it) count as outdated so they get refreshed rather than silently
+   * skipped. The dev session is always skipped — restarting it would kill the
+   * session driving Cockpit.
+   */
+  restartMany(opts: { onlyOutdated: boolean; version: string | null }): {
+    restarted: number
+    skipped: number
+  } {
+    let restarted = 0
+    let skipped = 0
+    for (const { session } of [...this.panes.values()]) {
+      const restartable = session.kind !== 'dev' && session.command === 'claude'
+      const outdated = !session.claudeVersion || session.claudeVersion !== opts.version
+      if (!restartable || (opts.onlyOutdated && !outdated)) {
+        skipped++
+        continue
+      }
+      if (this.restart(session.id)) restarted++
+      else skipped++
+    }
+    return { restarted, skipped }
   }
 
   /** Output captured so far (for replay when a terminal view mounts). */

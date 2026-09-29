@@ -86,6 +86,13 @@ export interface TerminalSession {
   tokensTotal: number
   /** Concrete model id of the latest assistant turn (e.g. `claude-opus-4-8`), or null before any turn. */
   model: string | null
+  /**
+   * `claude --version` this session's process was launched with. Sessions are
+   * long-running (tmux-backed), so updating the CLI on disk doesn't change a live
+   * session — this is what "Update outdated sessions" compares against. Null for
+   * non-claude panes or sessions launched before this was tracked.
+   */
+  claudeVersion: string | null
   /** True while this session is actively driving Chrome (claude-in-chrome MCP tools). */
   usingChrome: boolean
   /** Most recent browser action target (e.g. host or tool), shown when usingChrome. */
@@ -336,6 +343,12 @@ export interface CockpitApi {
   restartSession(id: string): Promise<TerminalSession | null>
   /** Close every session (kills all ptys) and kill all cockpit tmux; returns remaining tmux names. */
   closeAllSessions(): Promise<string[]>
+  /** Restart every session (fresh `claude` process, conversation resumed). */
+  restartAllSessions(): Promise<BulkRestartResult>
+  /** Restart only sessions running an older `claude` build than what's installed. */
+  restartOutdatedSessions(): Promise<BulkRestartResult>
+  /** The installed `claude --version` (queried fresh). */
+  claudeVersion(): Promise<string | null>
   /** Archive a session: close it but save its conversation + browser tabs to reopen later. Returns the updated archived list. */
   archiveSession(id: string): Promise<ArchivedSessionInfo[]>
   /** List archived (closed-and-saved) sessions. */
@@ -486,6 +499,16 @@ export interface CockpitApi {
     /** Fires when a locally-built update has just been staged and is ready to apply. */
     onStaged(cb: () => void): () => void
   }
+}
+
+/** Outcome of a bulk session restart (restart-all / update-outdated). */
+export interface BulkRestartResult {
+  /** How many sessions were relaunched. */
+  restarted: number
+  /** How many were left alone (already current, or not restartable e.g. the dev session). */
+  skipped: number
+  /** The installed `claude --version` the restarted sessions now run. */
+  version: string | null
 }
 
 /** Connection info for the LAN phone gateway (shown in Settings → Phone access). */

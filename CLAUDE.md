@@ -30,6 +30,11 @@ Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design. Key files
 - `src/main/browser-rpc.ts` — localhost RPC (:47616) the browser MCP shim calls.
 - `src/main/sessions-rpc.ts` — localhost RPC (:47617) the cross-session MCP shim
   calls: list sibling sessions / read another session's transcript digest.
+- `src/main/claude-version.ts` — the installed `claude --version` (queried via a
+  login shell, cached). Each session is stamped with the build it launched with
+  (`TerminalSession.claudeVersion`), because a live tmux-backed session keeps
+  running its original binary — that's what `SessionManager.restartMany()` and
+  Settings' "Update outdated to latest Claude" compare against.
 - `src/main/gateway.ts` — LAN phone/tablet gateway (`:47618`, bound to all
   interfaces, token-gated): serves the mobile client and streams live session +
   system-stat updates over Server-Sent Events. Read-only for now (see

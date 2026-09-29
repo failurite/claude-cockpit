@@ -56,6 +56,8 @@ export function SettingsPanel({
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [update, setUpdate] = useState<UpdateStatus | null>(null)
   const [gwInfo, setGwInfo] = useState<GatewayInfo | null>(null)
+  const [claudeVer, setClaudeVer] = useState<string | null>(null)
+  const [bulkMsg, setBulkMsg] = useState<string | null>(null)
 
   useEffect(() => {
     window.cockpit.tmux.available().then(setTmuxAvailable)
@@ -63,6 +65,7 @@ export function SettingsPanel({
     window.cockpit.settings.get().then(setSettings)
     window.cockpit.updates.status().then(setUpdate)
     window.cockpit.gateway.info().then(setGwInfo)
+    window.cockpit.claudeVersion().then(setClaudeVer)
     return window.cockpit.updates.onStatus(setUpdate)
   }, [])
 
@@ -84,6 +87,25 @@ export function SettingsPanel({
     if (!window.confirm('Close ALL sessions and kill cockpit tmux sessions? This cannot be undone.'))
       return
     setTmuxSessions(await window.cockpit.closeAllSessions())
+  }
+
+  /** Bulk relaunch so sessions pick up a newly-installed `claude`. */
+  const restartSessions = async (all: boolean): Promise<void> => {
+    const what = all ? 'Restart ALL sessions' : 'Restart sessions running an older Claude'
+    if (!window.confirm(`${what}? Each relaunches its claude process and resumes its conversation.`))
+      return
+    setBulkMsg(all ? 'Restarting all sessions…' : 'Checking versions…')
+    const r = all
+      ? await window.cockpit.restartAllSessions()
+      : await window.cockpit.restartOutdatedSessions()
+    setClaudeVer(r.version)
+    setBulkMsg(
+      r.restarted === 0
+        ? `Nothing to restart — everything is already on ${r.version ?? 'the installed build'}.`
+        : `Restarted ${r.restarted} session${r.restarted === 1 ? '' : 's'}` +
+            (r.skipped ? ` (${r.skipped} skipped)` : '') +
+            ` → ${r.version ?? 'installed build'}.`
+    )
   }
 
   return (
@@ -121,6 +143,23 @@ export function SettingsPanel({
           <button className="btn danger" onClick={closeAllSessions}>
             Close all sessions
           </button>
+          <p className="settings-note">
+            Sessions keep running the <code>claude</code> build they launched with, so updating the
+            CLI doesn’t change a live session — relaunch them to pick it up. Each keeps its
+            conversation (via <code>--resume</code>); the Cockpit Dev session is always skipped.
+          </p>
+          <div className="field-row">
+            <button className="btn primary" onClick={() => restartSessions(false)}>
+              ⟳ Update outdated to latest Claude
+            </button>
+            <button className="btn" onClick={() => restartSessions(true)}>
+              Restart all sessions
+            </button>
+          </div>
+          <p className="settings-note mono">
+            Installed: {claudeVer ?? 'unknown'}
+          </p>
+          {bulkMsg && <p className="settings-note">{bulkMsg}</p>}
           <label className="settings-check">
             <input
               type="checkbox"

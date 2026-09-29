@@ -125,8 +125,13 @@ function claudeFlags(
   const flags: string[] = []
   if (options.dangerouslySkipPermissions) flags.push('--dangerously-skip-permissions')
   // Launch model (e.g. opus/sonnet/haiku). quoteArg handles alias forms like
-  // `opus[1m]` so the shell doesn't glob the brackets.
-  if (options.model) flags.push('--model', quoteArg(options.model))
+  // `opus[1m]` so the shell doesn't glob the brackets. 'default' (or unset) means
+  // pass NO --model so the session inherits Claude Code's own current default —
+  // which auto-tracks the newest model instead of pinning to an id that goes
+  // stale every release.
+  if (options.model && options.model !== 'default') {
+    flags.push('--model', quoteArg(options.model))
+  }
   // External Chrome is the ONLY path that uses Claude's native Claude-in-Chrome
   // connector; opt in explicitly, or fall back to it if no embedded config exists.
   const useExternalChrome = options.chrome && (options.externalChrome || !browserMcpConfig)
@@ -592,7 +597,12 @@ export class SessionManager extends EventEmitter {
    * skipped. The dev session is always skipped — restarting it would kill the
    * session driving Cockpit.
    */
-  restartMany(opts: { onlyOutdated: boolean; version: string | null }): {
+  restartMany(opts: {
+    onlyOutdated: boolean
+    version: string | null
+    /** Also set every restarted session to this model ('default' = no --model flag). */
+    model?: string
+  }): {
     restarted: number
     skipped: number
   } {
@@ -605,7 +615,8 @@ export class SessionManager extends EventEmitter {
         skipped++
         continue
       }
-      if (this.restart(session.id)) restarted++
+      const overrides = opts.model ? { model: opts.model } : undefined
+      if (this.restart(session.id, overrides)) restarted++
       else skipped++
     }
     return { restarted, skipped }

@@ -3,21 +3,26 @@ import { useState } from 'react'
 /**
  * `--model` choices for starting a session; first entry is the default.
  *
- * We offer the 1M-context variants only (no reason to run less on these models).
- * Opus is pinned to the explicit `claude-opus-5[1m]` id on purpose: the bare
- * `opus` alias on the installed CLI still resolves to Opus 4.8, so the alias
- * can't be trusted to give the newest Opus — update this id when a newer Opus
- * ships (or once the `opus` alias tracks it). Sonnet/Haiku stay on aliases.
+ * We use ALIASES (`opus`/`sonnet`/`haiku`), never concrete ids: an alias resolves
+ * to the newest model in its family at launch time, so this list doesn't go stale
+ * as new models ship. Verified 2026-09: `opus[1m]` → claude-opus-5-5.
+ *
+ * Note `default` (send no `--model`) is NOT the top choice: Claude Code's own
+ * default currently resolves to claude-opus-5, i.e. one release BEHIND what the
+ * `opus` alias gives. It's kept as an explicit escape hatch for following whatever
+ * the CLI/account is configured to use.
  */
 export const MODEL_CHOICES: { value: string; label: string }[] = [
-  { value: 'claude-opus-5[1m]', label: 'Opus 5 · 1M context (default)' },
+  { value: 'opus[1m]', label: 'Opus · 1M context — newest (recommended)' },
   { value: 'sonnet[1m]', label: 'Sonnet · 1M context' },
   { value: 'haiku', label: 'Haiku' },
-  { value: 'default', label: 'Account default' }
+  { value: 'default', label: 'Claude Code default' }
 ]
 
 /** The default model a new session starts with (the newest). */
 export const DEFAULT_MODEL = MODEL_CHOICES[0].value
+/** Short label for the default choice (e.g. in Settings' bulk action). */
+export const DEFAULT_MODEL_LABEL = 'Opus · 1M'
 
 /**
  * Lightweight "which model?" prompt shown when starting a session (new session or

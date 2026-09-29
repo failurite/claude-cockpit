@@ -325,6 +325,12 @@ async function bootstrap(): Promise<void> {
     const version = await claudeVersion(true)
     return { ...manager.restartMany({ onlyOutdated: true, version }), version }
   })
+  // Put every session on one model (an alias like `opus[1m]` tracks the newest in
+  // that family; 'default' means no --model at all).
+  ipcMain.handle('sessions:apply-model-all', async (_e, model: string) => {
+    const version = await claudeVersion(true)
+    return { ...manager.restartMany({ onlyOutdated: false, version, model }), version }
+  })
   ipcMain.handle('claude:version', () => claudeVersion(true))
   ipcMain.handle('sessions:rename', (_e, id: string, name: string) => manager.rename(id, name))
   ipcMain.on('sessions:set-model', (_e, id: string, arg: string) => manager.setModel(id, arg))

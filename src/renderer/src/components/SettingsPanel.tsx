@@ -6,6 +6,7 @@ import type {
   HookInstallState,
   UpdateStatus
 } from '../../../shared/types'
+import { DEFAULT_MODEL, DEFAULT_MODEL_LABEL } from './StartSessionDialog'
 
 /** One-line summary of the current update status for the Settings UI. */
 function updateLabel(s: UpdateStatus): string {
@@ -89,15 +90,23 @@ export function SettingsPanel({
     setTmuxSessions(await window.cockpit.closeAllSessions())
   }
 
-  /** Bulk relaunch so sessions pick up a newly-installed `claude`. */
-  const restartSessions = async (all: boolean): Promise<void> => {
-    const what = all ? 'Restart ALL sessions' : 'Restart sessions running an older Claude'
+  /** Bulk relaunch so sessions pick up a newly-installed `claude` / one shared model. */
+  const restartSessions = async (mode: 'all' | 'outdated' | 'model'): Promise<void> => {
+    const what =
+      mode === 'all'
+        ? 'Restart ALL sessions'
+        : mode === 'outdated'
+          ? 'Restart sessions running an older Claude'
+          : `Put every session on “${DEFAULT_MODEL_LABEL}” and restart`
     if (!window.confirm(`${what}? Each relaunches its claude process and resumes its conversation.`))
       return
-    setBulkMsg(all ? 'Restarting all sessions…' : 'Checking versions…')
-    const r = all
-      ? await window.cockpit.restartAllSessions()
-      : await window.cockpit.restartOutdatedSessions()
+    setBulkMsg(mode === 'outdated' ? 'Checking versions…' : 'Restarting sessions…')
+    const r =
+      mode === 'all'
+        ? await window.cockpit.restartAllSessions()
+        : mode === 'outdated'
+          ? await window.cockpit.restartOutdatedSessions()
+          : await window.cockpit.applyModelEverywhere(DEFAULT_MODEL)
     setClaudeVer(r.version)
     setBulkMsg(
       r.restarted === 0
@@ -149,13 +158,22 @@ export function SettingsPanel({
             conversation (via <code>--resume</code>); the Cockpit Dev session is always skipped.
           </p>
           <div className="field-row">
-            <button className="btn primary" onClick={() => restartSessions(false)}>
+            <button className="btn primary" onClick={() => restartSessions('model')}>
+              ◆ Put every session on {DEFAULT_MODEL_LABEL}
+            </button>
+            <button className="btn" onClick={() => restartSessions('outdated')}>
               ⟳ Update outdated to latest Claude
             </button>
-            <button className="btn" onClick={() => restartSessions(true)}>
-              Restart all sessions
+            <button className="btn" onClick={() => restartSessions('all')}>
+              Restart all
             </button>
           </div>
+          <p className="settings-note">
+            Cockpit selects models by <em>alias</em> (<code>opus</code>, <code>sonnet</code>), which
+            always resolves to the newest model in that family — so this keeps working as new
+            models ship. (Claude Code’s bare default currently lands one release behind the{' '}
+            <code>opus</code> alias, which is why it isn’t what these buttons use.)
+          </p>
           <p className="settings-note mono">
             Installed: {claudeVer ?? 'unknown'}
           </p>

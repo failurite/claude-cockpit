@@ -52,6 +52,7 @@ const api: CockpitApi = {
   closeAllSessions: () => ipcRenderer.invoke('sessions:close-all'),
   restartAllSessions: () => ipcRenderer.invoke('sessions:restart-all'),
   restartOutdatedSessions: () => ipcRenderer.invoke('sessions:restart-outdated'),
+  applyModelEverywhere: (model) => ipcRenderer.invoke('sessions:apply-model-all', model),
   claudeVersion: () => ipcRenderer.invoke('claude:version'),
   renameSession: (id, name) => ipcRenderer.invoke('sessions:rename', id, name),
   setSessionModel: (id, arg) => ipcRenderer.send('sessions:set-model', id, arg),

@@ -347,6 +347,8 @@ export interface CockpitApi {
   restartAllSessions(): Promise<BulkRestartResult>
   /** Restart only sessions running an older `claude` build than what's installed. */
   restartOutdatedSessions(): Promise<BulkRestartResult>
+  /** Put every session on one model and restart them ('default' = no --model flag). */
+  applyModelEverywhere(model: string): Promise<BulkRestartResult>
   /** The installed `claude --version` (queried fresh). */
   claudeVersion(): Promise<string | null>
   /** Archive a session: close it but save its conversation + browser tabs to reopen later. Returns the updated archived list. */

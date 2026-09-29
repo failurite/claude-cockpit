@@ -533,10 +533,10 @@ export default function App(): JSX.Element {
                   <option value="" disabled>
                     change…
                   </option>
-                  <option value="claude-opus-5[1m]">Opus 5 (1M)</option>
+                  <option value="opus[1m]">Opus (1M) — newest</option>
                   <option value="sonnet[1m]">Sonnet (1M)</option>
                   <option value="haiku">Haiku</option>
-                  <option value="default">Default</option>
+                  <option value="default">Claude Code default</option>
                 </select>
               </span>
             )}

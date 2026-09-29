@@ -124,6 +124,12 @@ export class BrowserManager extends EventEmitter {
       }
       sync()
     })
+    // SPA / anchor navigations don't fire did-stop-loading, but they DO change
+    // history — re-sync so the back button's enabled state stays accurate.
+    wc.on('did-navigate-in-page', () => {
+      tab.url = wc.getURL()
+      sync()
+    })
     // Keep navigations the page initiates (links, redirects) in this same view.
     wc.setWindowOpenHandler(({ url: target }) => {
       void wc.loadURL(target)
@@ -165,6 +171,17 @@ export class BrowserManager extends EventEmitter {
     if (!tab) throw new Error('no such tab')
     tab.agentLoad = agent // did-stop-loading bounces focus to the host if agent-driven
     await this.safeLoad(tab, url)
+  }
+
+  /** Step back in a tab's history (no-op at the start of history). */
+  goBack(paneId: string, tabId: string | null): void {
+    const wc = this.resolveTab(paneId, tabId)?.view.webContents
+    if (wc?.navigationHistory.canGoBack()) wc.navigationHistory.goBack()
+  }
+
+  /** Reload a tab (the loading flag + url sync via the existing wc listeners). */
+  reload(paneId: string, tabId: string | null): void {
+    this.resolveTab(paneId, tabId)?.view.webContents.reload()
   }
 
   setBounds(paneId: string, bounds: BrowserBounds | null): void {
@@ -314,7 +331,20 @@ export class BrowserManager extends EventEmitter {
   }
 
   private toPublic(pb: PaneBrowser, t: Tab): BrowserTab {
-    return { id: t.id, title: t.title, url: t.url, loading: t.loading, active: pb.activeTabId === t.id }
+    let canGoBack = false
+    try {
+      canGoBack = t.view.webContents.navigationHistory.canGoBack()
+    } catch {
+      /* view destroyed mid-teardown */
+    }
+    return {
+      id: t.id,
+      title: t.title,
+      url: t.url,
+      loading: t.loading,
+      active: pb.activeTabId === t.id,
+      canGoBack
+    }
   }
 
   private emitTabs(paneId: string): void {

@@ -941,6 +941,25 @@ body.dragging-h .v-resizer {
   padding: 0 12px;
   cursor: pointer;
 }
+/* Back / reload sit left of the URL field — secondary styling so they don't
+   compete with the accent "Go" button. */
+.browser-urlbar .browser-nav {
+  background: #181b22;
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-weight: 400;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0 9px;
+  min-width: 26px;
+}
+.browser-urlbar .browser-nav:hover:not(:disabled) {
+  background: #1f232c;
+}
+.browser-urlbar .browser-nav:disabled {
+  color: var(--idle);
+  cursor: default;
+}
 /* The native WebContentsView is positioned over this rectangle by main. */
 .browser-stage {
   position: relative;

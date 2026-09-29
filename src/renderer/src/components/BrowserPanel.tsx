@@ -131,6 +131,22 @@ export function BrowserPanel({ paneId, onClose }: Props): JSX.Element {
       </div>
 
       <div className="browser-urlbar">
+        <button
+          className="browser-nav"
+          onClick={() => active && window.cockpit.browser.back(paneId, active.id)}
+          disabled={!active?.canGoBack}
+          title={active?.canGoBack ? 'Back' : 'Nothing to go back to'}
+        >
+          ‹
+        </button>
+        <button
+          className="browser-nav"
+          onClick={() => active && window.cockpit.browser.reload(paneId, active.id)}
+          disabled={!active}
+          title="Reload"
+        >
+          ⟳
+        </button>
         <input
           value={urlDraft}
           onChange={(e) => setUrlDraft(e.target.value)}

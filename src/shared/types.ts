@@ -220,6 +220,8 @@ export interface BrowserTab {
   loading: boolean
   /** True if this is the pane's foreground tab. */
   active: boolean
+  /** True when this tab has history to go back to (drives the ‹ button's enabled state). */
+  canGoBack: boolean
 }
 
 /** On-screen rectangle (CSS px, relative to the window content) for the browser overlay. */
@@ -416,6 +418,10 @@ export interface CockpitApi {
     activateTab(paneId: string, tabId: string): Promise<BrowserTab[]>
     /** Navigate a tab (defaults to the active tab) to a URL. */
     navigate(paneId: string, tabId: string, url: string): Promise<void>
+    /** Step back in the tab's history. */
+    back(paneId: string, tabId: string | null): void
+    /** Reload the tab. */
+    reload(paneId: string, tabId: string | null): void
     /** Report where the active tab should render for a pane (null = nowhere). */
     setBounds(paneId: string, bounds: BrowserBounds | null): void
     /** Show or hide a pane's browser overlay (only one pane is foreground at a time). */

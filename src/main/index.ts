@@ -381,6 +381,12 @@ async function bootstrap(): Promise<void> {
   ipcMain.handle('browser:navigate', (_e, paneId: string, tabId: string | null, url: string) =>
     browserMgr.navigate(paneId, tabId, url)
   )
+  ipcMain.on('browser:back', (_e, paneId: string, tabId: string | null) =>
+    browserMgr.goBack(paneId, tabId)
+  )
+  ipcMain.on('browser:reload', (_e, paneId: string, tabId: string | null) =>
+    browserMgr.reload(paneId, tabId)
+  )
   ipcMain.on('browser:set-bounds', (_e, paneId: string, bounds) =>
     browserMgr.setBounds(paneId, bounds)
   )

@@ -67,6 +67,8 @@ const BROWSER_RPC_PORT = 47616
 const SESSIONS_RPC_PORT = 47617
 /** Fixed LAN gateway port for the phone client (bound to all interfaces). */
 const GATEWAY_PORT = 47618
+/** Discard an embedded browser tab's renderer after this long out of view. */
+const TAB_IDLE_DISCARD_MS = 10 * 60_000
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 /** Project root (out/main/index.js -> ../..). In dev this is the repo; packaged it's the bundle. */
@@ -287,6 +289,15 @@ async function bootstrap(): Promise<void> {
     }
   })
   monitor.start()
+
+  // Reclaim memory from embedded browser tabs nobody is looking at. Only one tab
+  // is ever visible, but every other one keeps a full Chromium renderer running
+  // page JS/timers/sockets — that was ~1.95 GB across 15 tabs. Discarded tabs
+  // reload transparently on access.
+  setInterval(() => {
+    const n = browserMgr.sweepIdleTabs(TAB_IDLE_DISCARD_MS)
+    if (n) console.log(`[cockpit] discarded ${n} idle browser tab(s)`)
+  }, 60_000)
 
   // LAN gateway for the phone/tablet client (read-only dashboard for now). Bound
   // to all interfaces but gated by a persistent random token.

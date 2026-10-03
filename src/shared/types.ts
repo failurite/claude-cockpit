@@ -222,6 +222,12 @@ export interface BrowserTab {
   active: boolean
   /** True when this tab has history to go back to (drives the ‹ button's enabled state). */
   canGoBack: boolean
+  /**
+   * True when the tab's renderer has been torn down to save memory. The tab (and
+   * its URL) is intact and reloads automatically the moment it's activated or an
+   * agent touches it — so this is a UI hint, not a broken state.
+   */
+  discarded: boolean
 }
 
 /** On-screen rectangle (CSS px, relative to the window content) for the browser overlay. */

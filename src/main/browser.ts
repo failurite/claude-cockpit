@@ -16,10 +16,18 @@ const PARTITION = 'persist:cockpit-browser'
 
 interface Tab {
   id: string
-  view: WebContentsView
+  /**
+   * null = **discarded**: the WebContentsView (a whole Chromium renderer
+   * process) has been torn down to reclaim memory, but the tab record — id,
+   * title, url — lives on. Any access path recreates it via `ensureView()`, so
+   * discarding is invisible apart from a reload. Mirrors Chrome's tab discarding.
+   */
+  view: WebContentsView | null
   title: string
   url: string
   loading: boolean
+  /** ms epoch when this tab was last visible; drives idle discarding. */
+  lastShown: number
   /** This load was started by the agent (RPC), not the user — bounce focus back
    *  to the host window when it finishes so it can't steal terminal typing. */
   agentLoad?: boolean
@@ -71,7 +79,7 @@ export class BrowserManager extends EventEmitter {
     // Attach any views created before the window existed (e.g. restored on boot,
     // since restore() runs before createWindow()).
     for (const pb of this.panes.values()) {
-      for (const t of pb.tabs) win.contentView.addChildView(t.view)
+      for (const t of pb.tabs) if (t.view) win.contentView.addChildView(t.view)
     }
     this.relayout()
   }
@@ -96,10 +104,31 @@ export class BrowserManager extends EventEmitter {
 
   async openTab(paneId: string, url = HOME, agent = false): Promise<BrowserTab> {
     const pb = this.ensure(paneId)
-    const view = new WebContentsView({ webPreferences: { partition: PARTITION } })
-    const tab: Tab = { id: `tab-${++this.seq}`, view, title: url, url, loading: true, agentLoad: agent }
+    const tab: Tab = {
+      id: `tab-${++this.seq}`,
+      view: null,
+      title: url,
+      url,
+      loading: true,
+      lastShown: Date.now(),
+      agentLoad: agent
+    }
     pb.tabs.push(tab)
     pb.activeTabId = tab.id
+    this.attachView(paneId, tab, url)
+    this.relayout()
+    this.emitTabs(paneId)
+    return this.toPublic(pb, tab)
+  }
+
+  /**
+   * Create (or re-create) a tab's WebContentsView and wire its listeners, then
+   * start loading `loadUrl`. Shared by openTab and the un-discard path, so a
+   * revived tab behaves exactly like a fresh one.
+   */
+  private attachView(paneId: string, tab: Tab, loadUrl: string | null): WebContentsView {
+    const view = new WebContentsView({ webPreferences: { partition: PARTITION } })
+    tab.view = view
 
     const wc = view.webContents
     const sync = (): void => this.emitTabs(paneId)
@@ -137,10 +166,75 @@ export class BrowserManager extends EventEmitter {
     })
 
     if (this.win) this.win.contentView.addChildView(view)
+    if (loadUrl) void this.safeLoad(tab, loadUrl)
+    return view
+  }
+
+  /**
+   * The view for a tab, re-creating it (and reloading its URL) if it was
+   * discarded. Every path that needs a live renderer goes through here, so a
+   * discarded tab transparently wakes on user *or* agent access.
+   */
+  private ensureView(paneId: string, tab: Tab): WebContentsView {
+    if (tab.view) return tab.view
+    const view = this.attachView(paneId, tab, tab.url)
     this.relayout()
-    void this.safeLoad(tab, url)
     this.emitTabs(paneId)
-    return this.toPublic(pb, tab)
+    return view
+  }
+
+  /**
+   * Tear down a tab's renderer process but keep the tab (and its URL). This is
+   * the main memory lever: each live tab is a full Chromium process, and with 15
+   * tabs open the browser family held ~1.95 GB even though only one is ever
+   * visible. Never discards the tab the user is currently looking at.
+   */
+  discardTab(paneId: string, tabId: string): boolean {
+    const pb = this.panes.get(paneId)
+    const tab = pb?.tabs.find((t) => t.id === tabId)
+    if (!pb || !tab || !tab.view) return false
+    const isVisible = this.foreground === paneId && pb.activeTabId === tab.id && !this.suppressed
+    if (isVisible) return false
+    this.destroyView(tab)
+    tab.view = null
+    tab.loading = false
+    this.emitTabs(paneId)
+    return true
+  }
+
+  /**
+   * Discard every tab that hasn't been visible for `idleMs` (and every tab in a
+   * pane that isn't the foreground). Returns how many were discarded.
+   *
+   * Only ONE tab is ever visible in Cockpit, so the rest are pure overhead: they
+   * keep running page JS, timers, and websockets (several of ours point at local
+   * dev servers with live HMR sockets) for as long as the app is open.
+   */
+  sweepIdleTabs(idleMs: number): number {
+    const now = Date.now()
+    let discarded = 0
+    for (const [paneId, pb] of this.panes) {
+      for (const tab of pb.tabs) {
+        if (!tab.view) continue
+        const isVisible =
+          this.foreground === paneId && pb.activeTabId === tab.id && !this.suppressed
+        if (isVisible) {
+          tab.lastShown = now
+          continue
+        }
+        if (now - tab.lastShown >= idleMs && this.discardTab(paneId, tab.id)) discarded++
+      }
+    }
+    return discarded
+  }
+
+  /** Discard all of a pane's tabs now (used when a session goes to sleep). */
+  discardPane(paneId: string): number {
+    const pb = this.panes.get(paneId)
+    if (!pb) return 0
+    let n = 0
+    for (const tab of pb.tabs) if (this.discardTab(paneId, tab.id)) n++
+    return n
   }
 
   closeTab(paneId: string, tabId: string): BrowserTab[] {
@@ -158,8 +252,10 @@ export class BrowserManager extends EventEmitter {
 
   activateTab(paneId: string, tabId: string): BrowserTab[] {
     const pb = this.panes.get(paneId)
-    if (pb && pb.tabs.some((t) => t.id === tabId)) {
+    const tab = pb?.tabs.find((t) => t.id === tabId)
+    if (pb && tab) {
       pb.activeTabId = tabId
+      this.ensureView(paneId, tab) // revive it if it was discarded
       this.relayout()
       this.emitTabs(paneId)
     }
@@ -175,13 +271,16 @@ export class BrowserManager extends EventEmitter {
 
   /** Step back in a tab's history (no-op at the start of history). */
   goBack(paneId: string, tabId: string | null): void {
-    const wc = this.resolveTab(paneId, tabId)?.view.webContents
-    if (wc?.navigationHistory.canGoBack()) wc.navigationHistory.goBack()
+    const tab = this.resolveTab(paneId, tabId)
+    if (!tab) return
+    const wc = this.ensureView(paneId, tab).webContents
+    if (wc.navigationHistory.canGoBack()) wc.navigationHistory.goBack()
   }
 
   /** Reload a tab (the loading flag + url sync via the existing wc listeners). */
   reload(paneId: string, tabId: string | null): void {
-    this.resolveTab(paneId, tabId)?.view.webContents.reload()
+    const tab = this.resolveTab(paneId, tabId)
+    if (tab) this.ensureView(paneId, tab).webContents.reload()
   }
 
   setBounds(paneId: string, bounds: BrowserBounds | null): void {
@@ -223,7 +322,7 @@ export class BrowserManager extends EventEmitter {
   async readText(paneId: string, tabId: string | null): Promise<string> {
     const tab = this.resolveTab(paneId, tabId)
     if (!tab) throw new Error('no such tab')
-    const text = await tab.view.webContents.executeJavaScript(
+    const text = await this.ensureView(paneId, tab).webContents.executeJavaScript(
       'document.body ? document.body.innerText : ""'
     )
     return String(text ?? '')
@@ -233,7 +332,7 @@ export class BrowserManager extends EventEmitter {
   async click(paneId: string, tabId: string | null, selector: string): Promise<void> {
     const tab = this.resolveTab(paneId, tabId)
     if (!tab) throw new Error('no such tab')
-    const ok = await tab.view.webContents.executeJavaScript(
+    const ok = await this.ensureView(paneId, tab).webContents.executeJavaScript(
       `(() => { const el = document.querySelector(${JSON.stringify(selector)});
         if (!el) return false; el.click(); return true; })()`
     )
@@ -245,7 +344,7 @@ export class BrowserManager extends EventEmitter {
   async type(paneId: string, tabId: string | null, selector: string, text: string): Promise<void> {
     const tab = this.resolveTab(paneId, tabId)
     if (!tab) throw new Error('no such tab')
-    const ok = await tab.view.webContents.executeJavaScript(
+    const ok = await this.ensureView(paneId, tab).webContents.executeJavaScript(
       `(() => { const el = document.querySelector(${JSON.stringify(selector)});
         if (!el) return false; el.focus(); el.value = ${JSON.stringify(text)};
         el.dispatchEvent(new Event('input', { bubbles: true }));
@@ -259,7 +358,7 @@ export class BrowserManager extends EventEmitter {
   async screenshot(paneId: string, tabId: string | null): Promise<string> {
     const tab = this.resolveTab(paneId, tabId)
     if (!tab) throw new Error('no such tab')
-    const img = await tab.view.webContents.capturePage()
+    const img = await this.ensureView(paneId, tab).webContents.capturePage()
     return img.toPNG().toString('base64')
   }
 
@@ -292,6 +391,7 @@ export class BrowserManager extends EventEmitter {
 
   private async safeLoad(tab: Tab, url: string): Promise<void> {
     try {
+      if (!tab.view) return
       await tab.view.webContents.loadURL(url)
     } catch {
       /* navigation aborted/failed — did-stop-loading still syncs final state */
@@ -300,6 +400,7 @@ export class BrowserManager extends EventEmitter {
 
   private destroyView(tab: Tab): void {
     try {
+      if (!tab.view) return
       if (this.win) this.win.contentView.removeChildView(tab.view)
       // WebContentsView's contents are torn down when GC'd; close to be prompt.
       ;(tab.view.webContents as unknown as { close?: () => void }).close?.()
@@ -316,6 +417,8 @@ export class BrowserManager extends EventEmitter {
       const isForeground = !this.suppressed && paneId === this.foreground && !!fg?.bounds
       for (const tab of pb.tabs) {
         const show = isForeground && tab.id === pb.activeTabId
+        if (!tab.view) continue
+        if (show) tab.lastShown = Date.now()
         tab.view.setVisible(show)
         if (show && fg?.bounds) {
           const b = fg.bounds
@@ -333,7 +436,7 @@ export class BrowserManager extends EventEmitter {
   private toPublic(pb: PaneBrowser, t: Tab): BrowserTab {
     let canGoBack = false
     try {
-      canGoBack = t.view.webContents.navigationHistory.canGoBack()
+      canGoBack = !!t.view && t.view.webContents.navigationHistory.canGoBack()
     } catch {
       /* view destroyed mid-teardown */
     }
@@ -343,7 +446,8 @@ export class BrowserManager extends EventEmitter {
       url: t.url,
       loading: t.loading,
       active: pb.activeTabId === t.id,
-      canGoBack
+      canGoBack,
+      discarded: !t.view
     }
   }
 

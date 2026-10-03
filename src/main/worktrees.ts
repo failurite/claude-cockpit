@@ -1,7 +1,8 @@
 import { app } from 'electron'
 import { join, basename, isAbsolute } from 'path'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync } from 'fs'
 import { runGit } from './git.js'
+import { reapUnder } from './reaper.js'
 import type { IssueDoneResult } from '../shared/types.js'
 
 /**
@@ -137,6 +138,67 @@ export async function createIssueWorktree(
   return { worktree, branch }
 }
 
+/**
+ * Boot-time cleanup of per-issue worktrees nothing owns any more — the direct
+ * analogue of `sweepOrphanTmux()`, for the two things it doesn't cover:
+ *
+ *  1. processes still running inside an unowned worktree (leaked dev servers), and
+ *  2. leftover worktree DIRECTORIES whose git admin entry is already gone
+ *     (a husk: `git worktree remove` failed or the entry was pruned), which
+ *     accumulate invisibly — 53 of them had piled up before this existed.
+ *
+ * `ownedWorktrees` are the worktrees live/archived panes still map to; everything
+ * else under the root is fair game. Husks are only deleted when they have no
+ * `.git` at all, so a real worktree (even a dirty one) is never touched.
+ */
+export async function sweepOrphanWorktrees(
+  repoDirs: string[],
+  ownedWorktrees: string[]
+): Promise<{ reaped: number; removed: number }> {
+  const owned = new Set(ownedWorktrees)
+  const orphanDirs: string[] = []
+  const husks: string[] = []
+
+  for (const repoDir of repoDirs) {
+    const root = worktreeRoot(repoDir)
+    if (!existsSync(root)) continue
+    let entries: string[] = []
+    try {
+      entries = readdirSync(root)
+    } catch {
+      continue
+    }
+    for (const name of entries) {
+      const dir = join(root, name)
+      if (owned.has(dir)) continue
+      if (!existsSync(join(dir, '.git'))) husks.push(dir)
+      else orphanDirs.push(dir)
+    }
+  }
+
+  // Kill stragglers in every unowned worktree (husk or not) before deleting.
+  const reaped = await reapUnder([...orphanDirs, ...husks])
+
+  let removed = 0
+  for (const dir of husks) {
+    try {
+      rmSync(dir, { recursive: true, force: true })
+      removed++
+    } catch {
+      /* in use / permissions — leave it */
+    }
+  }
+  // Drop git's stale bookkeeping for anything we deleted.
+  for (const repoDir of repoDirs) {
+    try {
+      await runGit(repoDir, ['worktree', 'prune'], 15000)
+    } catch {
+      /* not a repo / offline */
+    }
+  }
+  return { reaped, removed }
+}
+
 // Finishing touches main / origin, so only one issue may land at a time.
 let mergeQueue: Promise<unknown> = Promise.resolve()
 
@@ -249,7 +311,11 @@ async function doFinish(repoDir: string, worktree: string, branch: string): Prom
       }
     }
 
-    // 4) Clean up the isolation.
+    // 4) Clean up the isolation. Kill anything the session left running inside
+    //    the worktree FIRST (dev servers etc. are parented by tmux, so closing
+    //    the pane doesn't take them down) — otherwise they linger forever
+    //    holding ports, and `worktree remove` can fail on busy files.
+    await reapUnder([worktree])
     try {
       await runGit(repoDir, ['worktree', 'remove', worktree], 30000)
     } catch {

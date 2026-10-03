@@ -37,6 +37,7 @@ import {
 } from './tmux.js'
 import { buildShellInvocation, quoteArg, quotePath } from './platform.js'
 import { cachedClaudeVersion } from './claude-version.js'
+import { reapUnder } from './reaper.js'
 import type { IssueRef } from '../shared/types.js'
 import { COCKPIT_WORKSPACE_ID } from '../shared/types.js'
 
@@ -622,6 +623,23 @@ export class SessionManager extends EventEmitter {
     return { restarted, skipped }
   }
 
+  /**
+   * Kill anything the session left running inside its own per-issue worktree
+   * (dev servers, playwright, etc.). Those are parented by the tmux server, so
+   * killing the pty + tmux session doesn't take them with it — they used to
+   * linger for weeks holding ports.
+   *
+   * Scoped to issue worktrees ON PURPOSE: a worktree belongs to exactly one
+   * session, so anything in it is ours. A normal session's cwd is a shared
+   * workspace folder (e.g. ~/code/house) where the user's own servers run — we
+   * must never reap by that.
+   */
+  private reapSessionChildren(session: TerminalSession): void {
+    const worktree = session.issue?.worktree
+    if (!worktree) return
+    void reapUnder([worktree])
+  }
+
   /** Output captured so far (for replay when a terminal view mounts). */
   getBuffer(id: string): string {
     return this.panes.get(id)?.buffer ?? ''
@@ -676,6 +694,7 @@ export class SessionManager extends EventEmitter {
     // Killing the pty only detaches from tmux — kill the tmux session too so the
     // claude process doesn't linger past the pane (no orphaned sessions).
     if (p.session.tmuxSession) killCockpitSession(p.session.tmuxSession)
+    this.reapSessionChildren(p.session)
     if (p.session.claudeSessionId) this.claudeIndex.delete(p.session.claudeSessionId)
     this.panes.delete(id)
     this.emit('closed', id) // let the BrowserManager tear down this pane's tabs
@@ -722,6 +741,7 @@ export class SessionManager extends EventEmitter {
     // Archive means "close & save": kill the tmux process too (reopen later via
     // --resume). A fresh tmux session is minted on restoreArchived().
     if (p.session.tmuxSession) killCockpitSession(p.session.tmuxSession)
+    this.reapSessionChildren(p.session)
     if (p.session.claudeSessionId) this.claudeIndex.delete(p.session.claudeSessionId)
     this.panes.delete(id)
     this.emit('closed', id)

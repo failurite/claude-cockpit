@@ -26,7 +26,12 @@ import {
   createIssue,
   uploadIssueImage
 } from './issues.js'
-import { createIssueWorktree, finishIssueWorktree, TASK_FILE } from './worktrees.js'
+import {
+  createIssueWorktree,
+  finishIssueWorktree,
+  sweepOrphanWorktrees,
+  TASK_FILE
+} from './worktrees.js'
 import type { IssueDoneResult, IssueRef } from '../shared/types.js'
 import {
   initStore,
@@ -39,7 +44,8 @@ import {
   getUiState,
   setUiValue,
   getGatewayToken,
-  setGatewayToken
+  setGatewayToken,
+  getArchivedSessions
 } from './store.js'
 import { hookStatus, installHooks, uninstallHooks } from './hooks-install.js'
 import { initUpdater } from './updater.js'
@@ -463,6 +469,37 @@ async function bootstrap(): Promise<void> {
   // With every pane now known (restored + dev), kill any cockpit tmux session
   // that no pane owns — orphans a crash could have left behind.
   manager.sweepOrphanTmux()
+
+  // Same idea for per-issue worktrees: reap dev servers still running inside a
+  // worktree no pane owns, and delete husk directories git no longer tracks.
+  // Deferred + fire-and-forget so a slow `lsof` never delays the window.
+  setTimeout(() => void sweepWorktreeOrphans(), 5000)
+}
+
+/** Reap leaked processes / husk dirs in per-issue worktrees nothing owns. */
+async function sweepWorktreeOrphans(): Promise<void> {
+  try {
+    const repoDirs = [
+      ...new Set(
+        getWorkspaces()
+          .map((w) => expandTilde(w.path || ''))
+          .filter(Boolean)
+      )
+    ]
+    // Worktrees a live or archived pane still maps to — never touch these.
+    // (Archived records are read from the store: the renderer-facing
+    // ArchivedSessionInfo deliberately doesn't expose the worktree path.)
+    const owned = [
+      ...manager.list().map((s) => s.issue?.worktree),
+      ...getArchivedSessions().map((a) => a.issue?.worktree)
+    ].filter((w): w is string => !!w)
+    const { reaped, removed } = await sweepOrphanWorktrees(repoDirs, owned)
+    if (reaped || removed) {
+      console.log(`[cockpit] worktree sweep: reaped ${reaped} process(es), removed ${removed} husk(s)`)
+    }
+  } catch (e) {
+    console.error('[cockpit] worktree sweep failed:', e)
+  }
 }
 
 function getSettings(): AppSettings {

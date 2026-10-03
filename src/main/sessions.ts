@@ -46,7 +46,8 @@ const MAX_BUFFER = 200_000
 
 interface Pane {
   session: TerminalSession
-  proc: IPty
+  /** null while the session is asleep (process killed to free memory). */
+  proc: IPty | null
   /** Recent pty output, replayed to the renderer on attach. */
   buffer: string
   /** dispose the transcript watcher, if any */
@@ -500,12 +501,24 @@ export class SessionManager extends EventEmitter {
 
   /** Wire a pane's pty output → buffer + 'data' event, and exit → status. */
   private wireProc(pane: Pane, id: string): void {
-    pane.proc.onData((chunk) => {
+    const proc = pane.proc
+    if (!proc) return
+    /**
+     * True once this pty is no longer the pane's current one — i.e. we killed it
+     * deliberately (sleep/restart) and replaced or cleared it. Its late `onExit`
+     * must then be ignored, or it would clobber the new state: sleeping a session
+     * kills the pty, and the exit handler would immediately overwrite 'asleep'
+     * with 'exited'.
+     */
+    const superseded = (): boolean => this.panes.get(id)?.proc !== proc
+    proc.onData((chunk) => {
+      if (superseded()) return
       pane.buffer += chunk
       if (pane.buffer.length > MAX_BUFFER) pane.buffer = pane.buffer.slice(-MAX_BUFFER)
       this.emit('data', id, chunk)
     })
-    pane.proc.onExit(() => {
+    proc.onExit(() => {
+      if (superseded()) return
       this.patch(id, { status: 'exited', lastActivity: 'process exited' })
       pane.unwatch?.()
     })
@@ -531,7 +544,7 @@ export class SessionManager extends EventEmitter {
     p.unwatch?.()
     p.unwatch = undefined
     try {
-      p.proc.kill()
+      p.proc?.kill()
     } catch {
       /* already dead */
     }
@@ -624,6 +637,98 @@ export class SessionManager extends EventEmitter {
   }
 
   /**
+   * Put a session to sleep: kill its `claude` process (and tmux session) and drop
+   * its embedded browser tabs' renderers, keeping everything needed to come back
+   * — the conversation id (for `--resume`), the tab URLs, name, cwd and options.
+   *
+   * This is the memory lever for the common case of many sessions open but few in
+   * use: an idle session still held a 50–530 MB claude process plus a Chromium
+   * renderer per tab. Unlike archive(), the pane stays in the list so it looks and
+   * feels present — it just wakes on click.
+   *
+   * Refuses to sleep a session that is mid-flight ('working'/'waiting') or the dev
+   * session, so we never interrupt real work or the pane driving Cockpit.
+   */
+  sleep(id: string): boolean {
+    const p = this.panes.get(id)
+    if (!p) return false
+    const s = p.session
+    if (s.kind === 'dev' || s.command !== 'claude') return false
+    // Only a settled session may sleep. 'working'/'waiting' is live work (or a
+    // pending prompt) and 'starting' hasn't finished booting.
+    if (s.status !== 'idle' && s.status !== 'exited') return false
+    // Without a conversation id we couldn't resume, so waking would silently lose
+    // the history — leave such a session running.
+    if (!s.claudeSessionId || !transcriptExists(s.claudeSessionId)) return false
+
+    p.unwatch?.()
+    p.unwatch = undefined
+    try {
+      p.proc?.kill()
+    } catch {
+      /* already dead */
+    }
+    p.proc = null
+    if (s.tmuxSession) killCockpitSession(s.tmuxSession)
+    this.reapSessionChildren(s)
+    this.emit('sleep', id) // BrowserManager drops this pane's tab renderers
+    // Keep `buffer` so a sleeping pane still shows its last output (dormant, not
+    // blank). wake() clears it, since the relaunched claude repaints from scratch.
+    Object.assign(s, {
+      status: 'asleep' as SessionStatus,
+      subagentCount: 0,
+      usingChrome: false,
+      chromeActivity: null,
+      lastActivity: 'asleep — click to wake',
+      updatedAt: Date.now()
+    })
+    this.emitSessions()
+    this.persist()
+    return true
+  }
+
+  /** Wake a sleeping session: respawn `claude --resume` in place and reopen tabs. */
+  wake(id: string): boolean {
+    const p = this.panes.get(id)
+    if (!p || p.session.status !== 'asleep') return false
+    const s = p.session
+    const resumeId = s.claudeSessionId && transcriptExists(s.claudeSessionId) ? s.claudeSessionId : null
+    const cwd = resolveSpawnDir(s.cwd)
+    const launch = this.buildLaunch({
+      command: s.command,
+      cwd,
+      options: s.options,
+      resumeId,
+      kind: s.kind,
+      tmuxName: s.tmuxSession
+    })
+    p.buffer = ''
+    p.proc = this.spawnPty(id, cwd, launch)
+    this.wireProc(p, id)
+    if (resumeId) {
+      p.unwatch = watchTranscriptForSession(resumeId, (stats) =>
+        this.patch(id, {
+          subagentCount: stats.subagents,
+          tokensTotal: stats.tokens,
+          model: stats.model ?? undefined
+        })
+      )
+    }
+    Object.assign(s, {
+      status: 'starting' as SessionStatus,
+      lastActivity: 'waking',
+      updatedAt: Date.now(),
+      claudeVersion: cachedClaudeVersion()
+    })
+    // No browser work needed on wake: the pane's tabs were *discarded*, not
+    // closed, so each one revives itself the moment it's activated.
+    this.emit('reset', id) // the old terminal content is stale
+    this.emitSessions()
+    this.persist()
+    return true
+  }
+
+  /**
    * Kill anything the session left running inside its own per-issue worktree
    * (dev servers, playwright, etc.). Those are parented by the tmux server, so
    * killing the pty + tmux session doesn't take them with it — they used to
@@ -646,7 +751,7 @@ export class SessionManager extends EventEmitter {
   }
 
   write(id: string, data: string): void {
-    this.panes.get(id)?.proc.write(data)
+    this.panes.get(id)?.proc?.write(data)
   }
 
   /**
@@ -660,15 +765,15 @@ export class SessionManager extends EventEmitter {
   sendPrompt(id: string, text: string): void {
     const p = this.panes.get(id)
     if (!p) return
-    p.proc.write(text)
-    setTimeout(() => this.panes.get(id)?.proc.write('\r'), 150)
+    p.proc?.write(text)
+    setTimeout(() => this.panes.get(id)?.proc?.write('\r'), 150)
   }
 
   resize(id: string, cols: number, rows: number): void {
     const p = this.panes.get(id)
     if (!p) return
     try {
-      p.proc.resize(Math.max(cols, 1), Math.max(rows, 1))
+      p.proc?.resize(Math.max(cols, 1), Math.max(rows, 1))
     } catch {
       /* pty may have exited */
     }
@@ -687,7 +792,7 @@ export class SessionManager extends EventEmitter {
     if (!p) return
     p.unwatch?.()
     try {
-      p.proc.kill()
+      p.proc?.kill()
     } catch {
       /* already dead */
     }
@@ -734,7 +839,7 @@ export class SessionManager extends EventEmitter {
     // Same teardown as close() (but the persisted record lives on in `archived`).
     p.unwatch?.()
     try {
-      p.proc.kill()
+      p.proc?.kill()
     } catch {
       /* already dead */
     }
@@ -907,7 +1012,7 @@ export class SessionManager extends EventEmitter {
     for (const p of this.panes.values()) {
       p.unwatch?.()
       try {
-        p.proc.kill()
+        p.proc?.kill()
       } catch {
         /* already dead */
       }

@@ -181,6 +181,17 @@ export function SettingsPanel({
           <label className="settings-check">
             <input
               type="checkbox"
+              checked={settings ? settings.autoSleepIdle : true}
+              onChange={async (e) => {
+                setSettings(await window.cockpit.settings.update({ autoSleepIdle: e.target.checked }))
+              }}
+            />
+            Sleep idle sessions to save memory (wakes on click, resumes the
+            conversation)
+          </label>
+          <label className="settings-check">
+            <input
+              type="checkbox"
               checked={!!settings?.hideCockpitWorkspace}
               onChange={async (e) => {
                 setSettings(await window.cockpit.settings.update({ hideCockpitWorkspace: e.target.checked }))

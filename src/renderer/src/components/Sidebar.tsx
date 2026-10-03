@@ -16,7 +16,8 @@ const STATUS_LABEL: Record<SessionStatus, string> = {
   idle: 'idle',
   working: 'working',
   waiting: 'needs you',
-  exited: 'exited'
+  exited: 'exited',
+  asleep: 'asleep'
 }
 
 interface Props {
@@ -213,7 +214,7 @@ export function Sidebar({
       key={s.id}
       className={`session-item ${s.id === activeId ? 'active' : ''} ${isDropTarget ? 'drop-target' : ''} ${
         drag?.kind === 'session' && drag.id === s.id ? 'dragging' : ''
-      }`}
+      } ${s.status === 'asleep' ? 'asleep' : ''}`}
       onClick={() => onSelect(s.id)}
       onContextMenu={(e) => {
         e.preventDefault()

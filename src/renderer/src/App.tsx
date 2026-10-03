@@ -152,6 +152,20 @@ export default function App(): JSX.Element {
     if (activeId) window.cockpit.ui.set('activeSessionId', activeId)
   }, [activeId])
 
+  /**
+   * Select a session — and wake it first if it was asleep (its claude process was
+   * stopped to free memory). Waking resumes the conversation, so clicking a
+   * sleeping session just looks like it taking a moment to come back.
+   */
+  const selectSession = useCallback(
+    (id: string) => {
+      setActiveId(id)
+      const s = sessions.find((x) => x.id === id)
+      if (s?.status === 'asleep') void window.cockpit.wakeSession(id)
+    },
+    [sessions]
+  )
+
   // A staged local update: prompt now/later when it lands, and keep a restart
   // button afterward. Also re-check on mount in case the event fired first.
   useEffect(() => {
@@ -412,7 +426,7 @@ export default function App(): JSX.Element {
             sessions={sessions}
             workspaces={workspaces}
             activeId={activeId}
-            onSelect={setActiveId}
+            onSelect={selectSession}
             onClose={closeSession}
             onRestart={restartSession}
             onArchive={archiveSession}

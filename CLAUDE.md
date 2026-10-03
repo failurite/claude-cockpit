@@ -30,6 +30,13 @@ Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design. Key files
 - `src/main/browser-rpc.ts` — localhost RPC (:47616) the browser MCP shim calls.
 - `src/main/sessions-rpc.ts` — localhost RPC (:47617) the cross-session MCP shim
   calls: list sibling sessions / read another session's transcript digest.
+- `src/main/reaper.ts` — kills processes a session left running inside its own
+  per-issue worktree, attributed by **cwd** (one `lsof -d cwd` call) since a
+  session's children are parented by the tmux server, not our pty. Scoped to
+  worktrees on purpose — never a shared workspace folder, where the user's own
+  servers live. Used on close/archive, before `worktree remove`, and by the
+  boot-time `sweepOrphanWorktrees()` (the analogue of `sweepOrphanTmux`, which
+  also deletes husk worktree dirs).
 - `src/main/claude-version.ts` — the installed `claude --version` (queried via a
   login shell, cached). Each session is stamped with the build it launched with
   (`TerminalSession.claudeVersion`), because a live tmux-backed session keeps
@@ -82,6 +89,24 @@ Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design. Key files
   (`cockpit_list_sessions` / `cockpit_read_session`); forwards to `sessions-rpc.ts`
   tagged with the pane id (keep dependency-free, like `emit.mjs`).
 
+## Reclaiming resources (sleep / discard)
+
+Many sessions open but few in use was costing ~2 GB: each idle session held a
+50–530 MB `claude` process, and each embedded browser tab a full Chromium
+renderer (only one is ever visible). Two mechanisms, both reversible:
+
+- **Tab discarding** (`BrowserManager.discardTab`/`sweepIdleTabs`) tears down a
+  tab's `WebContentsView` but keeps the tab + URL; `ensureView()` revives it on
+  any access (user *or* agent), so it's invisible apart from a reload.
+- **Session sleep** (`SessionManager.sleep`/`wake`) stops an idle session's
+  `claude` + tmux and discards its tabs, keeping `claudeSessionId` so `wake()`
+  relaunches with `--resume`. Never sleeps the dev session or anything
+  mid-task; sessions in a collapsed workspace sleep sooner. Toggle:
+  Settings → *Sleep idle sessions*.
+
+When killing a pty deliberately, note `wireProc` ignores a superseded pty's
+late `onExit` — otherwise it would overwrite `asleep` with `exited`.
+
 ## Conventions
 
 - TypeScript strict. Keep `src/shared/types.ts` the single source of truth.
@@ -98,7 +123,13 @@ npm run build         # bundles into out/
 npx electron scripts/pty-smoke.cjs   # native pty loads → PTY_OUTPUT:"pty-ok"
 npx electron scripts/webview-cdp-smoke.cjs   # embedded-browser control → SMOKE_RESULT: PASS
 node scripts/gateway-smoke.mjs               # LAN phone gateway serves + token-gates → SMOKE_RESULT: PASS
+node scripts/reaper-smoke.mjs                # worktree process reaper (by cwd) → SMOKE_RESULT: PASS
+npx electron scripts/tab-discard-smoke.cjs   # browser tab discard + revive → SMOKE_RESULT: PASS
+npx electron scripts/sleep-wake-smoke.cjs    # session sleep/wake guards → SMOKE_RESULT: PASS
 ```
+
+Note `webview-cdp-smoke.cjs` is currently failing on a clean tree (pre-existing
+bit-rot, unrelated to the app code — it only imports Electron).
 
 ## How "rebuild & relaunch" works
 

@@ -7,6 +7,7 @@ export type SessionStatus =
   | 'working' // actively running tools (PreToolUse seen, no Stop yet)
   | 'waiting' // needs the user: permission prompt or a question
   | 'exited' // the pty process ended
+  | 'asleep' // intentionally stopped to free memory; wakes on click (--resume)
 
 /** Launch options that map to `claude` CLI flags for a session. */
 export interface SessionOptions {
@@ -359,6 +360,10 @@ export interface CockpitApi {
   applyModelEverywhere(model: string): Promise<BulkRestartResult>
   /** The installed `claude --version` (queried fresh). */
   claudeVersion(): Promise<string | null>
+  /** Wake a sleeping session (respawn `claude --resume` in place). */
+  wakeSession(id: string): Promise<boolean>
+  /** Put a session to sleep now, freeing its process + browser renderers. */
+  sleepSession(id: string): Promise<boolean>
   /** Archive a session: close it but save its conversation + browser tabs to reopen later. Returns the updated archived list. */
   archiveSession(id: string): Promise<ArchivedSessionInfo[]>
   /** List archived (closed-and-saved) sessions. */
@@ -548,6 +553,12 @@ export interface AppSettings {
   /** Workspace ids the user has collapsed (minimized) in the sidebar; persisted
    *  in the main-process store so it survives restarts (localStorage was unreliable). */
   collapsedWorkspaces: string[]
+  /**
+   * Put idle, unselected sessions to sleep to free memory (default true). A
+   * sleeping session's claude process is stopped and its browser tabs' renderers
+   * dropped; clicking it wakes it with `--resume` and the tabs reload.
+   */
+  autoSleepIdle: boolean
 }
 
 export interface AppInfo {

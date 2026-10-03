@@ -69,6 +69,10 @@ const SESSIONS_RPC_PORT = 47617
 const GATEWAY_PORT = 47618
 /** Discard an embedded browser tab's renderer after this long out of view. */
 const TAB_IDLE_DISCARD_MS = 10 * 60_000
+/** Sleep an idle, unselected session after this long without activity. */
+const IDLE_SLEEP_MS = 30 * 60_000
+/** …and sooner when its workspace is collapsed (an explicit "not using this"). */
+const COLLAPSED_SLEEP_MS = 5 * 60_000
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 /** Project root (out/main/index.js -> ../..). In dev this is the repo; packaged it's the bundle. */
@@ -279,6 +283,8 @@ async function bootstrap(): Promise<void> {
     }
   })
   manager.on('closed', (paneId: string) => browserMgr.disposePane(paneId))
+  // A sleeping session drops its tabs' renderers too (they revive on access).
+  manager.on('sleep', (paneId: string) => browserMgr.discardPane(paneId))
 
   // Sidebar meters: sample system CPU/memory + Claude token throughput and push
   // to the renderer on an interval.
@@ -297,6 +303,7 @@ async function bootstrap(): Promise<void> {
   setInterval(() => {
     const n = browserMgr.sweepIdleTabs(TAB_IDLE_DISCARD_MS)
     if (n) console.log(`[cockpit] discarded ${n} idle browser tab(s)`)
+    sweepSleepableSessions()
   }, 60_000)
 
   // LAN gateway for the phone/tablet client (read-only dashboard for now). Bound
@@ -349,6 +356,8 @@ async function bootstrap(): Promise<void> {
     return { ...manager.restartMany({ onlyOutdated: false, version, model }), version }
   })
   ipcMain.handle('claude:version', () => claudeVersion(true))
+  ipcMain.handle('sessions:wake', (_e, id: string) => manager.wake(id))
+  ipcMain.handle('sessions:sleep', (_e, id: string) => manager.sleep(id))
   ipcMain.handle('sessions:rename', (_e, id: string, name: string) => manager.rename(id, name))
   ipcMain.on('sessions:set-model', (_e, id: string, arg: string) => manager.setModel(id, arg))
   ipcMain.handle('sessions:archive', (_e, id: string) => {
@@ -487,6 +496,28 @@ async function bootstrap(): Promise<void> {
   setTimeout(() => void sweepWorktreeOrphans(), 5000)
 }
 
+/**
+ * Put idle sessions nobody is looking at to sleep (see SessionManager.sleep).
+ * Sessions in a **collapsed** workspace sleep sooner — collapsing one is an
+ * explicit "I'm not using this right now". The selected session is always left
+ * alone, as is anything mid-task; sleep() enforces both too.
+ */
+function sweepSleepableSessions(): void {
+  if (getFlag('disableAutoSleep')) return
+  const activeId = getUiState().activeSessionId as string | undefined
+  const collapsed = new Set(getCollapsedWorkspaces())
+  const now = Date.now()
+  for (const s of manager.list()) {
+    if (s.id === activeId || s.status !== 'idle') continue
+    const quietFor = now - s.updatedAt
+    const limit =
+      s.workspaceId && collapsed.has(s.workspaceId) ? COLLAPSED_SLEEP_MS : IDLE_SLEEP_MS
+    if (quietFor >= limit && manager.sleep(s.id)) {
+      console.log(`[cockpit] slept idle session "${s.name}"`)
+    }
+  }
+}
+
 /** Reap leaked processes / husk dirs in per-issue worktrees nothing owns. */
 async function sweepWorktreeOrphans(): Promise<void> {
   try {
@@ -519,7 +550,9 @@ function getSettings(): AppSettings {
     hideCockpitWorkspace: getFlag('hideCockpitWorkspace'),
     // Stored as an opt-OUT flag so persistence is on by default.
     keepSessionsAlive: !getFlag('disableSessionTmux'),
-    collapsedWorkspaces: getCollapsedWorkspaces()
+    collapsedWorkspaces: getCollapsedWorkspaces(),
+    // Stored as an opt-OUT so sleeping is on by default.
+    autoSleepIdle: !getFlag('disableAutoSleep')
   }
 }
 
@@ -531,6 +564,8 @@ function updateSettings(patch: Partial<AppSettings>): AppSettings {
     setFlag('disableSessionTmux', !patch.keepSessionsAlive)
   if (Array.isArray(patch.collapsedWorkspaces))
     saveCollapsedWorkspaces(patch.collapsedWorkspaces)
+  if (typeof patch.autoSleepIdle === 'boolean')
+    setFlag('disableAutoSleep', !patch.autoSleepIdle)
   return getSettings()
 }
 

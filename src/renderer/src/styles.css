@@ -738,6 +738,15 @@ body {
 .dot.exited {
   background: var(--exited);
 }
+/* Asleep = intentionally stopped to save memory (wakes on click), so it reads as
+   dormant rather than broken: hollow, not a filled "live" dot. */
+.dot.asleep {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--idle);
+}
+.session-row.asleep .session-name {
+  opacity: 0.62;
+}
 @keyframes pulse {
   0%,
   100% {

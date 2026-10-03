@@ -1,7 +1,7 @@
 import chokidar, { type FSWatcher } from 'chokidar'
 import { homedir } from 'os'
 import { join } from 'path'
-import { existsSync, readdirSync, readFileSync } from 'fs'
+import { existsSync, readdirSync, readFileSync, statSync, openSync, readSync, closeSync } from 'fs'
 
 const PROJECTS_DIR = join(homedir(), '.claude', 'projects')
 
@@ -36,54 +36,110 @@ export interface TranscriptStats {
 }
 
 /**
- * Scan a transcript once for both the active sub-agent count and cumulative
- * token usage. Sub-agents are a heuristic (open `Task` tool_use ids). Tokens sum
- * each assistant turn's `usage` — input + output + cache-creation, deliberately
- * excluding `cache_read_input_tokens` (cheap, and it re-reads the whole context
- * every turn, which would swamp the meter).
+ * Running state of an **incremental** transcript scan.
+ *
+ * Transcripts are append-only JSONL and get big — 40 MB+ on a long session. The
+ * stats below are all foldable (a running token sum, a set of open `Task` ids,
+ * last-model-wins), so each change event only needs to read the bytes that were
+ * appended since the previous one. Re-reading and re-parsing the whole file on
+ * every append cost ~165 ms of blocked main thread and ~92 MB of allocation per
+ * event on a 41 MB file, for every watched session.
  */
-function readTranscriptStats(file: string): TranscriptStats {
-  let text: string
+interface ScanState {
+  /** Bytes consumed so far. Only ever advanced past COMPLETE lines. */
+  offset: number
+  /** Open `Task` tool_use ids = sub-agents still running. */
+  open: Set<string>
+  tokens: number
+  model: string | null
+}
+
+export function newScanState(): ScanState {
+  return { offset: 0, open: new Set<string>(), tokens: 0, model: null }
+}
+
+const statsOf = (st: ScanState): TranscriptStats => ({
+  subagents: st.open.size,
+  tokens: st.tokens,
+  model: st.model
+})
+
+/**
+ * Fold one transcript line into the running state. Tokens sum each assistant
+ * turn's `usage` — input + output + cache-creation, deliberately excluding
+ * `cache_read_input_tokens` (cheap, and it re-reads the whole context every turn,
+ * which would swamp the meter).
+ */
+function foldLine(line: string, st: ScanState): void {
+  if (!line.trim()) return
+  let entry: any
   try {
-    text = readFileSync(file, 'utf8')
+    entry = JSON.parse(line)
   } catch {
-    return { subagents: 0, tokens: 0, model: null }
+    return
   }
-  const open = new Set<string>()
-  let tokens = 0
-  let model: string | null = null
-  for (const line of text.split('\n')) {
-    if (!line.trim()) continue
-    let entry: any
-    try {
-      entry = JSON.parse(line)
-    } catch {
-      continue
-    }
-    const message = entry?.message
-    const content = message?.content
-    if (Array.isArray(content)) {
-      for (const block of content) {
-        if (block?.type === 'tool_use' && block?.name === 'Task') {
-          open.add(block.id)
-        } else if (block?.type === 'tool_result' && block?.tool_use_id) {
-          open.delete(block.tool_use_id)
-        }
+  const message = entry?.message
+  const content = message?.content
+  if (Array.isArray(content)) {
+    for (const block of content) {
+      if (block?.type === 'tool_use' && block?.name === 'Task') {
+        st.open.add(block.id)
+      } else if (block?.type === 'tool_result' && block?.tool_use_id) {
+        st.open.delete(block.tool_use_id)
       }
     }
-    if (message?.role === 'assistant') {
-      const u = message?.usage
-      if (u) {
-        tokens +=
-          (u.input_tokens || 0) +
-          (u.output_tokens || 0) +
-          (u.cache_creation_input_tokens || 0)
-      }
-      // Latest assistant turn wins → the model currently in use.
-      if (typeof message.model === 'string') model = message.model
-    }
   }
-  return { subagents: open.size, tokens, model }
+  if (message?.role === 'assistant') {
+    const u = message?.usage
+    if (u) {
+      st.tokens +=
+        (u.input_tokens || 0) + (u.output_tokens || 0) + (u.cache_creation_input_tokens || 0)
+    }
+    // Latest assistant turn wins → the model currently in use.
+    if (typeof message.model === 'string') st.model = message.model
+  }
+}
+
+/**
+ * Advance `st` over everything appended since the last call and return the
+ * current stats. Reads only the new bytes.
+ */
+export function scanTranscript(file: string, st: ScanState): TranscriptStats {
+  let size: number
+  try {
+    size = statSync(file).size
+  } catch {
+    return statsOf(st) // file vanished mid-session; keep the last known numbers
+  }
+  // Shrunk → the file was rewritten (compaction) or replaced, so our offset and
+  // running totals are meaningless. Start over from the top.
+  if (size < st.offset) {
+    st.offset = 0
+    st.open.clear()
+    st.tokens = 0
+    st.model = null
+  }
+  if (size === st.offset) return statsOf(st)
+
+  const fd = openSync(file, 'r')
+  try {
+    const len = size - st.offset
+    const buf = Buffer.allocUnsafe(len)
+    const read = readSync(fd, buf, 0, len, st.offset)
+    if (read <= 0) return statsOf(st)
+    // A change event can land mid-write, so the tail may be a partial JSON line.
+    // Cut at the last newline and leave the remainder for the next pass. We look
+    // for the byte 0x0A rather than slicing the decoded string: a newline byte
+    // can't occur inside a UTF-8 multi-byte sequence, so this split is safe even
+    // if the read ends mid-character.
+    const nl = buf.lastIndexOf(0x0a, read - 1)
+    if (nl === -1) return statsOf(st) // no complete line yet
+    for (const line of buf.subarray(0, nl).toString('utf8').split('\n')) foldLine(line, st)
+    st.offset += nl + 1
+  } finally {
+    closeSync(fd)
+  }
+  return statsOf(st)
 }
 
 /** A compact, coordination-oriented summary of another session's transcript. */
@@ -206,9 +262,11 @@ export function watchTranscriptForSession(
   let fileWatcher: FSWatcher | null = null
   let lastSubagents = -1
   let lastTokens = -1
+  // Running scan state, so each change event only parses the appended bytes.
+  const state = newScanState()
 
   const report = (file: string): void => {
-    const s = readTranscriptStats(file)
+    const s = scanTranscript(file, state)
     if (s.subagents !== lastSubagents || s.tokens !== lastTokens) {
       lastSubagents = s.subagents
       lastTokens = s.tokens
@@ -216,11 +274,31 @@ export function watchTranscriptForSession(
     }
   }
 
+  // Claude appends continuously while streaming, firing change events far faster
+  // than the UI can use. Coalesce them, but never stall longer than MAX_WAIT so
+  // the live token/sub-agent meters still feel responsive.
+  const DEBOUNCE_MS = 250
+  const MAX_WAIT_MS = 1000
+  let timer: ReturnType<typeof setTimeout> | null = null
+  let firstPendingAt = 0
+
+  const schedule = (file: string): void => {
+    if (!firstPendingAt) firstPendingAt = Date.now()
+    const waited = Date.now() - firstPendingAt
+    const delay = Math.max(0, Math.min(DEBOUNCE_MS, MAX_WAIT_MS - waited))
+    if (timer) clearTimeout(timer)
+    timer = setTimeout(() => {
+      timer = null
+      firstPendingAt = 0
+      report(file)
+    }, delay)
+  }
+
   const attach = (file: string): void => {
     if (fileWatcher) return
-    report(file)
+    report(file) // first pass reads the whole file to build the baseline
     fileWatcher = chokidar.watch(file, { ignoreInitial: true })
-    fileWatcher.on('change', () => report(file))
+    fileWatcher.on('change', () => schedule(file))
   }
 
   const found = locate(sessionId)
@@ -243,6 +321,10 @@ export function watchTranscriptForSession(
   }
 
   return () => {
+    // Drop any pending debounced scan too, so a disposed watcher can't fire
+    // onStats after its session is gone.
+    if (timer) clearTimeout(timer)
+    timer = null
     fileWatcher?.close()
     dirWatcher?.close()
   }

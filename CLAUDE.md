@@ -67,7 +67,13 @@ Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design. Key files
   `IS_MAC`/`IS_WINDOWS`. Touch this — not ad-hoc `process.platform` checks — when
   adding OS-specific behavior.
 - `src/main/transcripts.ts` — sub-agent counting + per-session token totals from
-  `~/.claude/projects/*.jsonl`.
+  `~/.claude/projects/*.jsonl`. The watcher scans **incrementally**: it keeps a
+  byte offset + running state (`scanTranscript`/`newScanState`) and parses only
+  appended lines, debounced ~250 ms. Transcripts reach 40 MB+, so the old
+  full re-parse on every append cost ~118 ms of blocked main thread and ~92 MB
+  of allocation per event, per session. When touching it, keep the stats
+  foldable and never consume a partial trailing line (a change event can land
+  mid-write); `sessionDigest` still reads whole files, but only on demand.
 - `src/main/monitor.ts` — `SystemMonitor`: samples system CPU/memory + Claude token
   throughput and pushes `SystemStats` to the renderer for the sidebar meters.
 - `src/main/store.ts` — JSON persistence (names, panes + browser tabs, workspaces,
@@ -124,6 +130,7 @@ npx electron scripts/pty-smoke.cjs   # native pty loads → PTY_OUTPUT:"pty-ok"
 npx electron scripts/webview-cdp-smoke.cjs   # embedded-browser control → SMOKE_RESULT: PASS
 node scripts/gateway-smoke.mjs               # LAN phone gateway serves + token-gates → SMOKE_RESULT: PASS
 node scripts/reaper-smoke.mjs                # worktree process reaper (by cwd) → SMOKE_RESULT: PASS
+node scripts/transcript-smoke.mjs            # incremental transcript scan == full parse → SMOKE_RESULT: PASS
 npx electron scripts/tab-discard-smoke.cjs   # browser tab discard + revive → SMOKE_RESULT: PASS
 npx electron scripts/sleep-wake-smoke.cjs    # session sleep/wake guards → SMOKE_RESULT: PASS
 ```

@@ -372,8 +372,11 @@ export interface CockpitApi {
   closeAllSessions(): Promise<string[]>
   /** Restart every session (fresh `claude` process, conversation resumed). */
   restartAllSessions(): Promise<BulkRestartResult>
-  /** Restart only sessions running an older `claude` build than what's installed. */
-  restartOutdatedSessions(): Promise<BulkRestartResult>
+  /**
+   * Restart only idle sessions running an older `claude` build than what's
+   * installed. `includeDev` also restarts the (idle) Cockpit Dev session.
+   */
+  restartOutdatedSessions(includeDev?: boolean): Promise<BulkRestartResult>
   /** Put every session on one model and restart them ('default' = no --model flag). */
   applyModelEverywhere(model: string): Promise<BulkRestartResult>
   /** The installed `claude --version` (queried fresh). */

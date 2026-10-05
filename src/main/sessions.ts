@@ -608,12 +608,15 @@ export class SessionManager extends EventEmitter {
    * long-running processes: updating the `claude` CLI on disk does NOT change a
    * live session, only a relaunch does. Unknown versions (sessions from before we
    * tracked it) count as outdated so they get refreshed rather than silently
-   * skipped; mid-task sessions are skipped by `onlyOutdated`. The dev session is always skipped — restarting it would kill the
-   * session driving Cockpit.
+   * skipped; mid-task sessions are skipped by `onlyOutdated`. The dev session is
+   * skipped unless `includeDev` — restarting it relaunches the session driving
+   * Cockpit, so only the sidebar's confirmed update opts in.
    */
   restartMany(opts: {
     onlyOutdated: boolean
     version: string | null
+    /** Also restart the (idle) dev session. */
+    includeDev?: boolean
     /** Also set every restarted session to this model ('default' = no --model flag). */
     model?: string
   }): {
@@ -623,7 +626,7 @@ export class SessionManager extends EventEmitter {
     let restarted = 0
     let skipped = 0
     for (const { session } of [...this.panes.values()]) {
-      const restartable = session.kind !== 'dev' && session.command === 'claude'
+      const restartable = (session.kind !== 'dev' || !!opts.includeDev) && session.command === 'claude'
       // An update must not interrupt live work: only settled sessions qualify
       // (busy ones are skipped and stay flagged until the user retries).
       const updatable = isClaudeOutdated(session, opts.version) && session.status === 'idle'

@@ -136,11 +136,31 @@ export function Sidebar({
   const [menuFor, setMenuFor] = useState<string | null>(null)
 
   // Sessions whose live claude predates the installed build (Claude Code
-  // auto-updated on disk). The bulk update only relaunches idle ones — never the
-  // dev session or anything mid-task — so those stay flagged for later.
+  // auto-updated on disk). The update relaunches only the idle ones (Cockpit Dev
+  // included, after a confirm); busy ones stay flagged for a later click.
   const outdated = sessions.filter((s) => isClaudeOutdated(s, installedClaude))
   const updateOutdated = async (): Promise<void> => {
-    const r = await window.cockpit.restartOutdatedSessions()
+    const ready = outdated.filter((s) => s.status === 'idle')
+    const busy = outdated.filter((s) => s.status !== 'idle')
+    const ver = shortClaudeVersion(installedClaude)
+    const names = (list: TerminalSession[]): string => list.map((s) => `  • ${s.name}`).join('\n')
+    const busyNote = busy.length
+      ? `\n\nBusy — skipped so their work isn't interrupted (click again once idle):\n${names(busy)}`
+      : ''
+    if (ready.length === 0) {
+      window.alert(`Every outdated session is busy right now.${busyNote}`)
+      return
+    }
+    const devNote = ready.some((s) => s.kind === 'dev')
+      ? '\n\nThis includes Cockpit Dev, the session that works on Cockpit itself.'
+      : ''
+    if (
+      !window.confirm(
+        `Restart onto Claude ${ver}? Each resumes its conversation.\n${names(ready)}${devNote}${busyNote}`
+      )
+    )
+      return
+    const r = await window.cockpit.restartOutdatedSessions(true)
     onInstalledClaude(r.version)
   }
   // Inline workspace rename (kept separate from session rename so ids can't clash).
@@ -363,8 +383,8 @@ export function Sidebar({
               title={
                 `Claude ${shortClaudeVersion(installedClaude)} is installed; ${outdated.length} session` +
                 `${outdated.length === 1 ? ' is' : 's are'} still on an older build.\n` +
-                'Click to relaunch the idle ones (conversations resume). Busy sessions and ' +
-                'Cockpit Dev are left alone — right-click those to restart when ready.'
+                'Click to relaunch the idle ones (conversations resume). Busy sessions are ' +
+                'skipped so their work isn\'t interrupted.'
               }
               onClick={updateOutdated}
             >

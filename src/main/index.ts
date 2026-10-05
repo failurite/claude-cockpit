@@ -13,7 +13,7 @@ import { BrowserManager } from './browser.js'
 import { startBrowserRpc, type BrowserRpcServer } from './browser-rpc.js'
 import { startSessionsRpc, type SessionsRpcServer } from './sessions-rpc.js'
 import { startGateway, type Gateway } from './gateway.js'
-import { claudeVersion } from './claude-version.js'
+import { claudeVersion, onClaudeVersionChange, pollClaudeVersion } from './claude-version.js'
 import { gitStatus, gitPush, gitPull, gitClone } from './git.js'
 import {
   ghAvailable,
@@ -295,6 +295,15 @@ async function bootstrap(): Promise<void> {
     }
   })
   monitor.start()
+
+  // Notice Claude Code's background auto-update (each pane's TUI then says
+  // "Update installed · Restart to update") so the sidebar can offer to relaunch
+  // the sessions still running the old build.
+  pollClaudeVersion(5 * 60_000)
+  onClaudeVersionChange((v) => {
+    console.log(`[cockpit] installed claude changed → ${v}`)
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('claude:version-changed', v)
+  })
 
   // Reclaim memory from embedded browser tabs nobody is looking at. Only one tab
   // is ever visible, but every other one keeps a full Chromium renderer running

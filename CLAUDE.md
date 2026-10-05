@@ -41,7 +41,13 @@ Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design. Key files
   login shell, cached). Each session is stamped with the build it launched with
   (`TerminalSession.claudeVersion`), because a live tmux-backed session keeps
   running its original binary — that's what `SessionManager.restartMany()` and
-  Settings' "Update outdated to latest Claude" compare against.
+  Settings' "Update outdated to latest Claude" compare against. Claude Code
+  auto-updates on disk in the background (its TUI then shows "Update installed ·
+  Restart to update"), so main re-polls every 5 min (`pollClaudeVersion`) and
+  pushes changes to the renderer; the sidebar flags outdated sessions (⬆ chip,
+  `isClaudeOutdated` in `shared/types.ts`) with a header "⬆ Update N" button
+  that relaunches only the *idle* ones (never mid-task, never the dev session —
+  right-click → "Restart to update Claude" for those).
 - `src/main/gateway.ts` — LAN phone/tablet gateway (`:47618`, bound to all
   interfaces, token-gated): serves the mobile client and streams live session +
   system-stat updates over Server-Sent Events. Read-only for now (see

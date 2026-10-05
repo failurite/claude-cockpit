@@ -178,6 +178,14 @@ export default function App(): JSX.Element {
   }, [])
   const applyUpdate = useCallback(() => window.cockpit.updates.applyStaged(), [])
 
+  // Installed `claude` build — main pushes a change when Claude Code auto-updates
+  // on disk, so the sidebar can flag sessions still running the old build.
+  const [installedClaude, setInstalledClaude] = useState<string | null>(null)
+  useEffect(() => {
+    window.cockpit.claudeVersion().then(setInstalledClaude)
+    return window.cockpit.onClaudeVersion(setInstalledClaude)
+  }, [])
+
   // An app-level modal (workspace/session dialog or Settings) must sit above
   // everything — but the embedded browser is a native overlay that always paints
   // over renderer HTML. Force it hidden while any modal is open.
@@ -449,6 +457,8 @@ export default function App(): JSX.Element {
             onOpenSettings={() => setSettingsOpen(true)}
             updateStaged={updateStaged}
             onApplyUpdate={applyUpdate}
+            installedClaude={installedClaude}
+            onInstalledClaude={setInstalledClaude}
             width={sbWidth}
             onCollapse={() => setSbCollapsed(true)}
           />

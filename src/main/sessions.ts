@@ -11,7 +11,7 @@ import type {
   SessionStatus,
   TerminalSession
 } from '../shared/types.js'
-import { DEFAULT_SESSION_OPTIONS } from '../shared/types.js'
+import { DEFAULT_SESSION_OPTIONS, isClaudeOutdated } from '../shared/types.js'
 import {
   saveSessions,
   getSavedSessions,
@@ -608,7 +608,7 @@ export class SessionManager extends EventEmitter {
    * long-running processes: updating the `claude` CLI on disk does NOT change a
    * live session, only a relaunch does. Unknown versions (sessions from before we
    * tracked it) count as outdated so they get refreshed rather than silently
-   * skipped. The dev session is always skipped — restarting it would kill the
+   * skipped; mid-task sessions are skipped by `onlyOutdated`. The dev session is always skipped — restarting it would kill the
    * session driving Cockpit.
    */
   restartMany(opts: {
@@ -624,8 +624,10 @@ export class SessionManager extends EventEmitter {
     let skipped = 0
     for (const { session } of [...this.panes.values()]) {
       const restartable = session.kind !== 'dev' && session.command === 'claude'
-      const outdated = !session.claudeVersion || session.claudeVersion !== opts.version
-      if (!restartable || (opts.onlyOutdated && !outdated)) {
+      // An update must not interrupt live work: only settled sessions qualify
+      // (busy ones are skipped and stay flagged until the user retries).
+      const updatable = isClaudeOutdated(session, opts.version) && session.status === 'idle'
+      if (!restartable || (opts.onlyOutdated && !updatable)) {
         skipped++
         continue
       }

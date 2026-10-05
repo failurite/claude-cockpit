@@ -155,7 +155,7 @@ export function SettingsPanel({
           <p className="settings-note">
             Sessions keep running the <code>claude</code> build they launched with, so updating the
             CLI doesn’t change a live session — relaunch them to pick it up. Each keeps its
-            conversation (via <code>--resume</code>); the Cockpit Dev session is always skipped.
+            conversation (via <code>--resume</code>); the Cockpit Dev session is always skipped, and the update skips sessions that are mid-task.
           </p>
           <div className="field-row">
             <button className="btn primary" onClick={() => restartSessions('model')}>

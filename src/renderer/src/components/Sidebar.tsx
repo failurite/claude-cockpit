@@ -5,7 +5,7 @@ import type {
   TerminalSession,
   Workspace
 } from '../../../shared/types'
-import { COCKPIT_WORKSPACE_ID } from '../../../shared/types'
+import { COCKPIT_WORKSPACE_ID, isClaudeOutdated, shortClaudeVersion } from '../../../shared/types'
 import { SystemStats } from './SystemStats'
 import { WorkspaceGit } from './WorkspaceGit'
 import { WorkspaceIssues } from './WorkspaceIssues'
@@ -62,6 +62,10 @@ interface Props {
   updateStaged: boolean
   /** Restart into the staged update. */
   onApplyUpdate: () => void
+  /** Installed `claude --version`; sessions running another build get flagged. */
+  installedClaude: string | null
+  /** The bulk update re-queried the installed version. */
+  onInstalledClaude: (v: string | null) => void
   /** Current width in px (user-resizable via the drag handle in App). */
   width: number
   /** Collapse the sidebar to a thin rail. */
@@ -95,6 +99,8 @@ export function Sidebar({
   onOpenSettings,
   updateStaged,
   onApplyUpdate,
+  installedClaude,
+  onInstalledClaude,
   width,
   onCollapse
 }: Props): JSX.Element {
@@ -128,6 +134,15 @@ export function Sidebar({
     }
   }, [])
   const [menuFor, setMenuFor] = useState<string | null>(null)
+
+  // Sessions whose live claude predates the installed build (Claude Code
+  // auto-updated on disk). The bulk update only relaunches idle ones — never the
+  // dev session or anything mid-task — so those stay flagged for later.
+  const outdated = sessions.filter((s) => isClaudeOutdated(s, installedClaude))
+  const updateOutdated = async (): Promise<void> => {
+    const r = await window.cockpit.restartOutdatedSessions()
+    onInstalledClaude(r.version)
+  }
   // Inline workspace rename (kept separate from session rename so ids can't clash).
   const [editingWsId, setEditingWsId] = useState<string | null>(null)
   const [wsDraft, setWsDraft] = useState('')
@@ -291,6 +306,16 @@ export function Sidebar({
             >
               {s.name}
             </span>
+            {isClaudeOutdated(s, installedClaude) && (
+              <span
+                className="outdated-chip"
+                title={`Running Claude ${shortClaudeVersion(s.claudeVersion)}; ${shortClaudeVersion(
+                  installedClaude
+                )} is installed. Right-click → Restart to update.`}
+              >
+                ⬆
+              </span>
+            )}
             {s.usingChrome && (
               <span className="chrome-chip" title={`Driving Chrome: ${s.chromeActivity ?? ''}`}>
                 🌐
@@ -330,6 +355,20 @@ export function Sidebar({
               onClick={onApplyUpdate}
             >
               ⟳ Restart to update
+            </button>
+          )}
+          {outdated.length > 0 && (
+            <button
+              className="update-pill"
+              title={
+                `Claude ${shortClaudeVersion(installedClaude)} is installed; ${outdated.length} session` +
+                `${outdated.length === 1 ? ' is' : 's are'} still on an older build.\n` +
+                'Click to relaunch the idle ones (conversations resume). Busy sessions and ' +
+                'Cockpit Dev are left alone — right-click those to restart when ready.'
+              }
+              onClick={updateOutdated}
+            >
+              ⬆ Update {outdated.length}
             </button>
           )}
           <button className="new-btn" title="Hide sidebar" onClick={onCollapse}>
@@ -584,10 +623,28 @@ export function Sidebar({
               // Clamp to the viewport so a right-click near the bottom/right edge
               // isn't clipped (menu ~200×210 for the full set).
               left: Math.max(8, Math.min(ctxMenu.x, window.innerWidth - 208)),
-              top: Math.max(8, Math.min(ctxMenu.y, window.innerHeight - 218))
+              top: Math.max(8, Math.min(ctxMenu.y, window.innerHeight - 246))
             }}
           >
             <div className="ctx-menu-title">{ctxMenu.s.name}</div>
+            {isClaudeOutdated(ctxMenu.s, installedClaude) && (
+              <button
+                onClick={() => {
+                  const s = ctxMenu.s
+                  setCtxMenu(null)
+                  // The dev session is the one driving Cockpit — make it deliberate.
+                  if (
+                    s.kind === 'dev' &&
+                    !window.confirm('Restart the Cockpit Dev session onto the new Claude? It resumes its conversation.')
+                  )
+                    return
+                  onRestart(s.id)
+                }}
+                title={`Relaunch on Claude ${shortClaudeVersion(installedClaude)}, resuming the conversation`}
+              >
+                ⬆ Restart to update Claude
+              </button>
+            )}
             {ctxMenu.s.kind !== 'dev' && (
               <button
                 onClick={() => {

@@ -91,6 +91,11 @@ body {
   cursor: pointer;
   white-space: nowrap;
 }
+.outdated-chip {
+  color: var(--accent);
+  font-size: 10px;
+  flex-shrink: 0;
+}
 .update-pill:hover {
   background: color-mix(in srgb, var(--accent) 30%, transparent);
 }

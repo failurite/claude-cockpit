@@ -105,6 +105,24 @@ export interface TerminalSession {
 }
 
 /**
+ * True when a session's live `claude` process runs an older build than the one
+ * installed — what Claude Code's own "Update installed · Restart to update" line
+ * means. Only a *running* claude counts: an asleep/exited pane has no process
+ * and relaunches onto the installed build anyway. An unknown stamp (sessions
+ * from before we tracked it) counts as outdated so it gets refreshed.
+ */
+export function isClaudeOutdated(s: TerminalSession, installed: string | null): boolean {
+  if (!installed || s.command !== 'claude') return false
+  if (s.status === 'asleep' || s.status === 'exited') return false
+  return s.claudeVersion !== installed
+}
+
+/** "2.1.233 (Claude Code)" → "2.1.233" for display. */
+export function shortClaudeVersion(v: string | null): string {
+  return (v ?? '').replace(/\s*\(Claude Code\)\s*$/, '') || 'unknown'
+}
+
+/**
  * A point-in-time snapshot of machine + Claude token load, sampled in main and
  * pushed to the renderer for the sidebar meters. CPU/memory are system-wide;
  * token figures are aggregated across this app's live sessions.
@@ -360,6 +378,11 @@ export interface CockpitApi {
   applyModelEverywhere(model: string): Promise<BulkRestartResult>
   /** The installed `claude --version` (queried fresh). */
   claudeVersion(): Promise<string | null>
+  /**
+   * Fires when the installed `claude` build changes on disk (Claude Code
+   * auto-updates in the background; main polls for it). Returns an unsubscribe.
+   */
+  onClaudeVersion(cb: (version: string | null) => void): () => void
   /** Wake a sleeping session (respawn `claude --resume` in place). */
   wakeSession(id: string): Promise<boolean>
   /** Put a session to sleep now, freeing its process + browser renderers. */
@@ -524,7 +547,10 @@ export interface CockpitApi {
 export interface BulkRestartResult {
   /** How many sessions were relaunched. */
   restarted: number
-  /** How many were left alone (already current, or not restartable e.g. the dev session). */
+  /**
+   * How many were left alone (already current, not restartable e.g. the dev
+   * session, or — for update-outdated — mid-task, so real work isn't interrupted).
+   */
   skipped: number
   /** The installed `claude --version` the restarted sessions now run. */
   version: string | null

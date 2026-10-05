@@ -13,6 +13,13 @@ import { buildShellInvocation } from './platform.js'
  * (a GUI-launched app has a minimal PATH; see ensureUserPath / platform.ts).
  */
 let cached: string | null = null
+const listeners = new Set<(v: string | null) => void>()
+
+/** Subscribe to changes of the installed version (seen by a fresh query). */
+export function onClaudeVersionChange(cb: (v: string | null) => void): () => void {
+  listeners.add(cb)
+  return () => listeners.delete(cb)
+}
 
 export function cachedClaudeVersion(): string | null {
   return cached
@@ -29,8 +36,22 @@ export function claudeVersion(refresh = false): Promise<string | null> {
         return
       }
       const v = (stdout || '').trim().split('\n')[0]?.trim() || null
-      if (v) cached = v
+      if (v && v !== cached) {
+        const prev = cached
+        cached = v
+        if (prev) for (const cb of listeners) cb(v)
+      }
       resolve(cached)
     })
   })
+}
+
+/**
+ * Claude Code auto-updates itself in the background, so the build on disk can
+ * change under a running Cockpit. Re-query periodically so new sessions are
+ * stamped with the right build and outdated live sessions get surfaced.
+ */
+export function pollClaudeVersion(intervalMs: number): () => void {
+  const t = setInterval(() => void claudeVersion(true), intervalMs)
+  return () => clearInterval(t)
 }

@@ -47,7 +47,8 @@ Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design. Key files
   pushes changes to the renderer; the sidebar flags outdated sessions (⬆ chip,
   `isClaudeOutdated` in `shared/types.ts`) with a header "⬆ Update N" button
   that relaunches only the *idle* ones (never mid-task, never the dev session —
-  right-click → "Restart to update Claude" for those).
+  right-click → "Restart to update Claude" for those, which confirms first if
+  the session is busy).
 - `src/main/gateway.ts` — LAN phone/tablet gateway (`:47618`, bound to all
   interfaces, token-gated): serves the mobile client and streams live session +
   system-stat updates over Server-Sent Events. Read-only for now (see

@@ -632,12 +632,17 @@ export function Sidebar({
                 onClick={() => {
                   const s = ctxMenu.s
                   setCtxMenu(null)
-                  // The dev session is the one driving Cockpit — make it deliberate.
-                  if (
-                    s.kind === 'dev' &&
-                    !window.confirm('Restart the Cockpit Dev session onto the new Claude? It resumes its conversation.')
-                  )
-                    return
+                  // Relaunching kills the live claude process, so warn before
+                  // cutting off a turn in flight. The dev session is the one
+                  // driving Cockpit — always make that deliberate.
+                  const busy = s.status === 'working' || s.status === 'waiting' || s.status === 'starting'
+                  const warning = busy
+                    ? `“${s.name}” is ${STATUS_LABEL[s.status]} — restarting now will interrupt what it's ` +
+                      'doing (the conversation resumes, but the current turn is lost). Restart anyway?'
+                    : s.kind === 'dev'
+                      ? 'Restart the Cockpit Dev session onto the new Claude? It resumes its conversation.'
+                      : null
+                  if (warning && !window.confirm(warning)) return
                   onRestart(s.id)
                 }}
                 title={`Relaunch on Claude ${shortClaudeVersion(installedClaude)}, resuming the conversation`}

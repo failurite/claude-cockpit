@@ -163,7 +163,9 @@ place. On macOS it then **POSTs `/update-staged` to the running app's ingest
 server (:47615)** rather than force-quitting — the app shows a "restart now / later"
 prompt and keeps a **⟳ Restart to update** button in the sidebar until you choose;
 restarting spawns a detached watcher that reopens the fresh build after quit
-(`applyStagedUpdate` in `src/main/index.ts`). If the app isn't reachable (not
+(`applyStagedUpdate` in `src/main/index.ts`). The prompt (also opened by the sidebar button)
+lists any mid-task sessions and whether each survives the restart — tmux-backed
+ones keep running unless *kill tmux on quit* is on. If the app isn't reachable (not
 running, or an older build without the endpoint) the script falls back to the old
 detached-watcher + `osascript quit` auto-relaunch. No notarization/signing prompts
 — a locally-built app isn't quarantined. You can run this from the **Cockpit Dev**

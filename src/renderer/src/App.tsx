@@ -178,6 +178,18 @@ export default function App(): JSX.Element {
   }, [])
   const applyUpdate = useCallback(() => window.cockpit.updates.applyStaged(), [])
 
+  // What the restart would do to sessions that are mid-task. Quitting Cockpit
+  // only detaches from tmux-backed sessions — their claude keeps running and is
+  // re-attached on relaunch — unless "kill tmux on quit" is on; a pane without
+  // tmux (Windows, or opted out) dies with the app.
+  const [killTmuxOnQuit, setKillTmuxOnQuit] = useState(false)
+  useEffect(() => {
+    if (updatePrompt) window.cockpit.settings.get().then((st) => setKillTmuxOnQuit(st.killTmuxOnQuit))
+  }, [updatePrompt])
+  const activeImpact = sessions
+    .filter((s) => s.status === 'working' || s.status === 'waiting' || s.status === 'starting')
+    .map((s) => ({ s, survives: !!s.tmuxSession && !killTmuxOnQuit }))
+
   // Installed `claude` build — main pushes a change when Claude Code auto-updates
   // on disk, so the sidebar can flag sessions still running the old build.
   const [installedClaude, setInstalledClaude] = useState<string | null>(null)
@@ -422,7 +434,7 @@ export default function App(): JSX.Element {
             <button
               className="update-pill rail"
               title="An update is ready — restart to apply it"
-              onClick={applyUpdate}
+              onClick={() => setUpdatePrompt(true)}
             >
               ⟳
             </button>
@@ -456,7 +468,7 @@ export default function App(): JSX.Element {
             issuesRefreshKey={issuesRefreshKey}
             onOpenSettings={() => setSettingsOpen(true)}
             updateStaged={updateStaged}
-            onApplyUpdate={applyUpdate}
+            onApplyUpdate={() => setUpdatePrompt(true)}
             installedClaude={installedClaude}
             onInstalledClaude={setInstalledClaude}
             width={sbWidth}
@@ -625,6 +637,25 @@ export default function App(): JSX.Element {
               working — the <strong>⟳ Restart to update</strong> button stays in the sidebar
               until you do. Your sessions are restored on relaunch.
             </p>
+            {activeImpact.length === 0 ? (
+              <p className="update-impact ok">✓ No session is mid-task — nothing will be interrupted.</p>
+            ) : (
+              <div className="update-impact">
+                <p style={{ margin: '0 0 6px' }}>
+                  {activeImpact.length} session{activeImpact.length === 1 ? ' is' : 's are'} active:
+                </p>
+                <ul>
+                  {activeImpact.map(({ s, survives }) => (
+                    <li key={s.id} className={survives ? 'ok' : 'warn'}>
+                      <strong>{s.name}</strong> ({s.status === 'waiting' ? 'needs you' : s.status}) —{' '}
+                      {survives
+                        ? 'keeps running through the restart'
+                        : 'will be interrupted (its conversation resumes, but the current turn is lost)'}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <div className="modal-actions">
               <button className="btn" onClick={() => setUpdatePrompt(false)}>
                 Later

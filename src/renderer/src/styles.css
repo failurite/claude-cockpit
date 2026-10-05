@@ -91,6 +91,22 @@ body {
   cursor: pointer;
   white-space: nowrap;
 }
+/* Update dialog: which mid-task sessions a restart would touch. */
+.update-impact {
+  font-size: 12px;
+  margin: 0 0 12px;
+}
+.update-impact ul {
+  margin: 0;
+  padding-left: 18px;
+}
+.update-impact .ok,
+.update-impact.ok {
+  color: var(--ok);
+}
+.update-impact .warn {
+  color: var(--waiting);
+}
 .outdated-chip {
   color: var(--accent);
   font-size: 10px;

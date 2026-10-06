@@ -217,3 +217,19 @@ export async function viewIssue(
 export async function closeIssue(dir: string, number: number, comment: string): Promise<void> {
   await gh(dir, ['issue', 'close', String(number), '--comment', comment], 30000)
 }
+
+/**
+ * Whether an issue is still open. Used by the Done flow when a branch has no
+ * commits: an issue the session already closed by hand (a duplicate) needs no
+ * further action, while an open one is worth mentioning before discarding the
+ * session. Returns null when gh can't answer (offline / no auth).
+ */
+export async function issueIsOpen(dir: string, number: number): Promise<boolean | null> {
+  try {
+    const r = await gh(dir, ['issue', 'view', String(number), '--json', 'state'])
+    const state = (JSON.parse(r.stdout) as { state?: string }).state
+    return state ? state.toUpperCase() === 'OPEN' : null
+  } catch {
+    return null
+  }
+}

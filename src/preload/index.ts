@@ -142,6 +142,7 @@ const api: CockpitApi = {
     start: (workspaceId, number, model) =>
       ipcRenderer.invoke('issues:start', workspaceId, number, model),
     done: (paneId) => ipcRenderer.invoke('issues:done', paneId),
+    discard: (paneId) => ipcRenderer.invoke('issues:discard', paneId),
     labels: (dir) => ipcRenderer.invoke('issues:labels', dir),
     create: (dir, opts) => ipcRenderer.invoke('issues:create', dir, opts),
     uploadImage: (dir, opts) => ipcRenderer.invoke('issues:upload-image', dir, opts)

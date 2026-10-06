@@ -20,6 +20,7 @@ import {
   listIssues,
   viewIssue,
   closeIssue,
+  issueIsOpen,
   createRepo,
   renameRepo,
   listLabels,
@@ -29,6 +30,7 @@ import {
 import {
   createIssueWorktree,
   finishIssueWorktree,
+  discardIssueWorktree,
   sweepOrphanWorktrees,
   TASK_FILE
 } from './worktrees.js'
@@ -444,6 +446,7 @@ async function bootstrap(): Promise<void> {
     startIssueSession(workspaceId, number, model)
   )
   ipcMain.handle('issues:done', (_e, paneId: string) => finishIssueSession(paneId))
+  ipcMain.handle('issues:discard', (_e, paneId: string) => discardIssueSession(paneId))
   ipcMain.handle('issues:labels', (_e, dir: string) => listLabels(expandTilde(dir)))
   ipcMain.handle('issues:create', (_e, dir: string, opts) => createIssue(expandTilde(dir), opts))
   ipcMain.handle('issues:upload-image', (_e, dir: string, opts) =>
@@ -769,6 +772,17 @@ async function finishIssueSession(paneId: string): Promise<IssueDoneResult> {
     res.message = `Merge conflicts on issue #${number} — asked the session to resolve, re-validate, and load the app for you to test, then press Done again.`
     return res
   }
+  if (res.status === 'nothing') {
+    // No commits: the issue turned out to be a duplicate, or needed no code.
+    // Nothing to merge — tell the renderer so it can offer to discard instead,
+    // and say whether the issue still needs closing on GitHub.
+    const open = await issueIsOpen(repoDir, number)
+    res.issueOpen = open
+    res.message =
+      `Issue #${number}: no commits on the branch — nothing to merge.` +
+      (open === true ? ` Issue #${number} is still open on GitHub.` : '')
+    return res
+  }
   if (res.status !== 'merged') return res
 
   // Close the issue with a summary; a failure here shouldn't undo the merge.
@@ -781,6 +795,22 @@ async function finishIssueSession(paneId: string): Promise<IssueDoneResult> {
   } catch (e) {
     res.message += ` (Issue close failed: ${(e as Error).message} — close it manually.)`
   }
+  manager.close(paneId)
+  return res
+}
+
+/**
+ * Retire an issue session that produced nothing to merge (a duplicate, or an
+ * issue that needed no code change): drop its worktree + branch and close the
+ * pane. `discardIssueWorktree` refuses if the branch has commits, so real work
+ * can't be thrown away this way — those still go through Done.
+ */
+async function discardIssueSession(paneId: string): Promise<{ ok: boolean; message: string }> {
+  const s = manager.list().find((x) => x.id === paneId)
+  if (!s?.issue) return { ok: false, message: 'This session has no issue mapped.' }
+  const { repoDir, worktree, branch } = s.issue
+  const res = await discardIssueWorktree(repoDir, worktree, branch)
+  if (!res.ok) return res
   manager.close(paneId)
   return res
 }

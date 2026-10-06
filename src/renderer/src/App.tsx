@@ -266,11 +266,29 @@ export default function App(): JSX.Element {
   const startIssue = useCallback((workspaceId: string, number: number) => {
     setStartPrompt({ kind: 'issue', workspaceId, number })
   }, [])
-  const doneIssue = useCallback(async (paneId: string) => {
+  const doneIssue = useCallback(async (paneId: string, number: number) => {
     setIssueBusy(true)
     setIssueMsg(null)
     const r = await window.cockpit.issues.done(paneId)
     setIssueMsg(r.message)
+    // Nothing committed (a duplicate, or no code change needed) → there's nothing
+    // to merge, so offer to retire the session instead of leaving it open.
+    if (r.status === 'nothing') {
+      const ok = window.confirm(
+        `No commits on the branch for issue #${number} — nothing to merge.\n\n` +
+          `Close this session and delete its worktree and branch?` +
+          (r.issueOpen === true
+            ? `\n\nIssue #${number} is still OPEN on GitHub and will be left open.`
+            : '')
+      )
+      if (ok) {
+        const d = await window.cockpit.issues.discard(paneId)
+        setIssueMsg(d.message)
+        if (d.ok) setIssuesRefreshKey((k) => k + 1)
+      }
+      setIssueBusy(false)
+      return
+    }
     // Merged → the issue is closed on GitHub; refresh the Issues lists to drop it.
     if (r.ok) setIssuesRefreshKey((k) => k + 1)
     setIssueBusy(false)
@@ -522,7 +540,7 @@ export default function App(): JSX.Element {
               <button
                 className="done-btn"
                 disabled={issueBusy}
-                onClick={() => doneIssue(active.id)}
+                onClick={() => doneIssue(active.id, active.issue!.number)}
                 title={`Rebase, merge to the default branch, push, and close issue #${active.issue.number}`}
               >
                 {issueBusy ? 'Merging…' : `✓ Done #${active.issue.number}`}

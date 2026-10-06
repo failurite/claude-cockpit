@@ -297,6 +297,15 @@ GitHub issues become dedicated, concurrent sessions with clean repo sync:
   --comment` with the merged-commit summary → close the pane. On success the
   renderer bumps `issuesRefreshKey`, so each open workspace Issues list re-fetches
   and the just-closed issue drops off.
+- **Nothing to merge:** a branch with no commits ahead of the default branch
+  (the issue was a duplicate, or needed no code change) returns `status:
+  'nothing'` instead of an error, with `issueOpen` from `issueIsOpen()`. The
+  renderer asks whether to retire the session anyway; on yes it calls
+  `issues.discard` → `discardIssueWorktree` (same merge queue), which re-checks
+  that the branch really has no commits — so real work can never be discarded
+  this way — then `worktree remove` + `branch -D` and closes the pane. The issue
+  itself is left as the session left it (a duplicate is normally already closed
+  by hand), and the prompt says so when it's still open.
 - **Failure handling:** `dirty` and `conflict` results leave the worktree
   intact and Cockpit *types instructions into that session's pty* (via
   `sendPrompt`, which submits with a **separate delayed Enter** — a `\r` in the

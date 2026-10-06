@@ -200,11 +200,18 @@ export interface IssueRef {
 /** Outcome of the Done flow for an issue session. */
 export interface IssueDoneResult {
   ok: boolean
-  /** merged = landed on the default branch; dirty/conflict = sent back to the session. */
-  status: 'merged' | 'dirty' | 'conflict' | 'error'
+  /**
+   * merged = landed on the default branch; dirty/conflict = sent back to the
+   * session; nothing = the branch has no commits (e.g. the issue turned out to
+   * be a duplicate or needed no code), so there is nothing to land and the
+   * caller should offer to discard the session instead.
+   */
+  status: 'merged' | 'dirty' | 'conflict' | 'nothing' | 'error'
   message: string
   /** One-line-per-commit summary of what was merged (when status = merged). */
   summary?: string
+  /** For status = nothing: whether the issue is still open on GitHub (null = unknown). */
+  issueOpen?: boolean | null
 }
 
 /** Git state of a workspace directory, for the sidebar push/pull UI. */
@@ -484,6 +491,11 @@ export interface CockpitApi {
     start(workspaceId: string, number: number, model?: string): Promise<TerminalSession>
     /** Finish an issue session: rebase → merge to default branch → push → close issue. */
     done(paneId: string): Promise<IssueDoneResult>
+    /**
+     * Retire an issue session without merging: delete its worktree + branch and
+     * close the pane. Refuses if the branch has commits (use `done` for those).
+     */
+    discard(paneId: string): Promise<{ ok: boolean; message: string }>
     /** Labels defined on the repo (for the New-issue picker). */
     labels(dir: string): Promise<RepoLabel[]>
     /** Create a new issue; returns its URL on success. */

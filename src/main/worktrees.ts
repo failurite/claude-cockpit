@@ -219,6 +219,83 @@ export function finishIssueWorktree(
   return job
 }
 
+/**
+ * Tear down an issue's isolation: kill anything the session left running inside
+ * the worktree FIRST (dev servers etc. are parented by tmux, so closing the pane
+ * doesn't take them down — otherwise they linger forever holding ports, and
+ * `worktree remove` can fail on busy files), then drop the worktree + branch.
+ * Returns a note to append to the user-facing message (empty when all went well).
+ */
+async function cleanupWorktree(repoDir: string, worktree: string, branch: string): Promise<string> {
+  let note = ''
+  await reapUnder([worktree])
+  try {
+    await runGit(repoDir, ['worktree', 'remove', worktree], 30000)
+  } catch {
+    try {
+      await runGit(repoDir, ['worktree', 'remove', '--force', worktree], 30000)
+    } catch {
+      note += ' (worktree cleanup failed — remove it via `git worktree remove`.)'
+    }
+  }
+  try {
+    await runGit(repoDir, ['branch', '-D', branch])
+  } catch {
+    /* already gone */
+  }
+  return note
+}
+
+/**
+ * Discard an issue's worktree + branch without merging — for an issue that
+ * produced no commits (a duplicate, or one that needed no code change). Refuses
+ * when the branch does have commits, so real work can never be thrown away here;
+ * those go through `finishIssueWorktree`. Serialized with the merge queue since
+ * it touches the repo's worktree bookkeeping.
+ */
+export function discardIssueWorktree(
+  repoDir: string,
+  worktree: string,
+  branch: string
+): Promise<{ ok: boolean; message: string }> {
+  const job = mergeQueue.then(() => doDiscard(repoDir, worktree, branch))
+  mergeQueue = job.catch(() => {})
+  return job
+}
+
+async function doDiscard(
+  repoDir: string,
+  worktree: string,
+  branch: string
+): Promise<{ ok: boolean; message: string }> {
+  try {
+    if (!existsSync(join(worktree, '.git'))) {
+      // Already gone (e.g. swept at boot) — nothing to do, let the caller retire
+      // the session rather than leaving it stuck.
+      return { ok: true, message: 'Worktree already removed.' }
+    }
+    const base = await defaultBranch(repoDir)
+    const remote = await hasRemote(repoDir)
+    const upstreamRef = remote ? `origin/${base}` : base
+    let commits = ''
+    try {
+      commits = (await runGit(worktree, ['log', '--oneline', `${upstreamRef}..HEAD`])).stdout.trim()
+    } catch {
+      /* unknown base ref — fall through and treat as no commits */
+    }
+    if (commits) {
+      return {
+        ok: false,
+        message: `The branch has ${commits.split('\n').length} commit(s) — press Done to merge them instead.`
+      }
+    }
+    const note = await cleanupWorktree(repoDir, worktree, branch)
+    return { ok: true, message: `Discarded the issue worktree and branch.${note}` }
+  } catch (e) {
+    return { ok: false, message: short(e) }
+  }
+}
+
 async function doFinish(repoDir: string, worktree: string, branch: string): Promise<IssueDoneResult> {
   try {
     if (!existsSync(join(worktree, '.git'))) {
@@ -268,7 +345,13 @@ async function doFinish(repoDir: string, worktree: string, branch: string): Prom
       await runGit(worktree, ['log', '--oneline', `${upstreamRef}..HEAD`])
     ).stdout.trim()
     if (!summary) {
-      return { ok: false, status: 'error', message: 'No commits on the issue branch — nothing to merge.' }
+      // Nothing was committed (duplicate issue, no code change needed, …). Not an
+      // error — the caller offers to discard the session instead of merging.
+      return {
+        ok: false,
+        status: 'nothing',
+        message: 'No commits on the issue branch — nothing to merge.'
+      }
     }
 
     // 3) Land it.
@@ -311,25 +394,8 @@ async function doFinish(repoDir: string, worktree: string, branch: string): Prom
       }
     }
 
-    // 4) Clean up the isolation. Kill anything the session left running inside
-    //    the worktree FIRST (dev servers etc. are parented by tmux, so closing
-    //    the pane doesn't take them down) — otherwise they linger forever
-    //    holding ports, and `worktree remove` can fail on busy files.
-    await reapUnder([worktree])
-    try {
-      await runGit(repoDir, ['worktree', 'remove', worktree], 30000)
-    } catch {
-      try {
-        await runGit(repoDir, ['worktree', 'remove', '--force', worktree], 30000)
-      } catch {
-        note += ' (worktree cleanup failed — remove it via `git worktree remove`.)'
-      }
-    }
-    try {
-      await runGit(repoDir, ['branch', '-D', branch])
-    } catch {
-      /* already gone */
-    }
+    // 4) Clean up the isolation.
+    note += await cleanupWorktree(repoDir, worktree, branch)
 
     return { ok: true, status: 'merged', message: `Merged to ${base}.${note}`, summary }
   } catch (e) {

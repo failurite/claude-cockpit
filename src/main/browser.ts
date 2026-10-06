@@ -421,12 +421,18 @@ export class BrowserManager extends EventEmitter {
         if (show) tab.lastShown = Date.now()
         tab.view.setVisible(show)
         if (show && fg?.bounds) {
+          // The renderer measures in CSS px, but a WebContentsView is placed in
+          // window DIPs — they differ by the window's page zoom (⌘− / ⌘=), which
+          // otherwise shrinks/shifts the view off the panel. Applied here so it's
+          // always the current zoom (a zoom change also fires the renderer's
+          // `resize`, which re-reports bounds and lands back here).
+          const z = this.win.webContents.getZoomFactor()
           const b = fg.bounds
           tab.view.setBounds({
-            x: Math.round(b.x),
-            y: Math.round(b.y),
-            width: Math.max(0, Math.round(b.width)),
-            height: Math.max(0, Math.round(b.height))
+            x: Math.round(b.x * z),
+            y: Math.round(b.y * z),
+            width: Math.max(0, Math.round(b.width * z)),
+            height: Math.max(0, Math.round(b.height * z))
           })
         }
       }
